@@ -1,0 +1,58 @@
+{
+  "_comment": "Claude Office 설정. config.json 으로 복사해서 쓰세요 (npm run setup 이 만들어 줍니다). 고친 뒤 새로고침하면 반영돼요.",
+  "collectors": {
+    "_comment": "부서별 켜기/끄기. 토큰이나 경로가 없으면 그 부서만 '부재중'으로 표시돼요",
+    "claude": true,
+    "github": true,
+    "research": true,
+    "notion": false,
+    "obsidian": false
+  },
+  "tripKeywords": {
+    "_comment": "도구 이름에 키워드가 들어 있으면(대소문자 무시) 그 구역으로 출장. 위에서부터 먼저 맞는 것 적용",
+    "github": "gh",
+    "notion": "plan",
+    "obsidian": "research",
+    "websearch": "research",
+    "webfetch": "research"
+  },
+  "zones": {
+    "_comment": "세션 상태 → 구역. 구역 키: dev lib srv research plan gh meet ceo cafe nap standup",
+    "waiting": "ceo",
+    "read": "lib",
+    "run": "srv",
+    "edit": "dev",
+    "browse": "research",
+    "think": "meet",
+    "delegate": "dev",
+    "done": "cafe",
+    "sleep": "nap"
+  },
+  "debounce": {
+    "minStaySec": 8,
+    "quickToolSec": 3
+  },
+  "standup": {
+    "_comment": "이 시각(로컬 시간)마다 durationMin 분 동안 화이트보드 앞에 모임. 대기·수면 중인 직원은 제외",
+    "times": [
+      "10:00",
+      "16:00"
+    ],
+    "durationMin": 5
+  },
+  "maxSubagentsShown": 3,
+  "pollMs": 1000,
+  "ambientStaff": 16,
+  "_ambientStaff": "배경 직원 수 (실제 세션과 별개로 사무실을 채우는 직원). 0이면 끔",
+  "sessionWindowHours": 12,
+  "maxSessions": 12,
+  "githubPollSec": 60,
+  "notionPollSec": 120,
+  "obsidianPollSec": 30,
+  "research": {
+    "_comment": "연구실 층(B1). path 의 기록 파일이 원본이고 Office 는 읽기만 해요. publicMode 를 켜면 프로젝트명을 '연구 프로젝트 A, B…'로 익명화",
+    "path": "~/research-log",
+    "publicMode": false,
+    "floorRotateSec": 0
+  }
+}

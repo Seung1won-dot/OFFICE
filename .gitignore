@@ -1,0 +1,25 @@
+# 개인 설정·토큰 (예시 파일만 올림: config.example.json, .env.example)
+.env
+config.json
+
+# 로컬 데이터·로그·캡처
+data/
+logs/
+docs/screens/
+
+# 재배포 불가 에셋은 사용자가 직접 넣음 (assets/README.md 참고)
+assets/third-party/
+# 내려받은 원본 팩·작업용 파일 (화면에 쓰이지 않음)
+assets/_downloads/
+assets/_tools/
+assets/_grid/
+assets/_unused/
+assets/bundled/
+assets/previews/
+assets/manifest.json
+
+# 빌드·의존성
+node_modules/
+web/dist/
+.DS_Store
+.claude/

@@ -1,0 +1,17 @@
+{
+  "name": "claude-office",
+  "version": "1.0.0",
+  "description": "내 컴퓨터에서 돌아가는 Claude Code 세션들을 아늑한 픽셀아트 사무실로 보여주는 로컬 대시보드",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "build": "npm --prefix web install && npm --prefix web run build",
+    "start": "node server.js",
+    "dev": "npm --prefix web run dev",
+    "uninstall-hooks": "node scripts/uninstall-hooks.js",
+    "check-secrets": "node scripts/check-secrets.js",
+    "draft": "node collectors/research.js draft"
+  },
+  "engines": { "node": ">=18" }
+}

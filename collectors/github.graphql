@@ -1,0 +1,23 @@
+query($since: GitTimestamp!) {
+  viewer {
+    login name avatarUrl
+    repositories(first: 50, ownerAffiliations: OWNER, orderBy: {field: PUSHED_AT, direction: DESC}) {
+      nodes {
+        name description url pushedAt isPrivate isArchived isFork stargazerCount
+        primaryLanguage { name color }
+        openPRs: pullRequests(states: OPEN) { totalCount }
+        openIssues: issues(states: OPEN) { totalCount }
+        merged: pullRequests(states: MERGED, first: 1, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title mergedAt } }
+        defaultBranchRef {
+          name
+          target { ... on Commit {
+            messageHeadline committedDate
+            statusCheckRollup { state }
+            recent: history(since: $since) { totalCount }
+            total: history { totalCount }
+          } }
+        }
+      }
+    }
+  }
+}
