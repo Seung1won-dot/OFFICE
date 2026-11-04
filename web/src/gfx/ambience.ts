@@ -27,7 +27,7 @@ export function glow(scene: Phaser.Scene, x: number, y: number, color: string, r
 
 /** 방 전체를 은은하게 어둡게 (밤) */
 export function addNight(scene: Phaser.Scene, w: number, h: number, alpha = 0.26) {
-  scene.add.rectangle(0, 0, w, h, 0x160c1e, alpha).setOrigin(0).setDepth(DEPTH.night);
+  return scene.add.rectangle(0, 0, w, h, 0x160c1e, alpha).setOrigin(0).setDepth(DEPTH.night);
 }
 
 /** 타일을 보고 조명을 자동 배치: 천장등, 창문, 스탠드, 모니터, 서버, 커피머신 */

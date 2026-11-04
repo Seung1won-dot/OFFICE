@@ -36,6 +36,54 @@
     #collectors { margin-top: 8px; font-size: 11px; color: var(--muted); }
     #collectors .c-on { color: #86c060; } #collectors .c-absent, #collectors .c-error { color: #d6a748; } #collectors .c-off { color: #6e5e56; }
     .keys { color: #6e5e56; font-size: 10px; margin-top: 8px; }
+
+    /* 오른쪽 위: 토큰 위젯 + 토글 */
+    #right { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+    #tokens { display: flex; gap: 10px; align-items: center; font-size: 11px; color: #d9c9b6; background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; white-space: nowrap; }
+    #tokens .bar { width: 54px; height: 6px; background: #1c1517; border-radius: 3px; overflow: hidden; display: inline-block; }
+    #tokens .bar i { display: block; height: 100%; }
+    #tokens .lim { color: #ff6b5a; font-weight: bold; }
+    #tokens .warn { color: #ff6b5a; }
+    .tog { font: inherit; font-size: 11px; color: var(--muted); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; cursor: pointer; white-space: nowrap; }
+    .tog.on { color: #2a1d1c; background: #d6a748; border-color: #d6a748; }
+    @media (max-width: 900px) { #btn-typing { display: none; } #hud { display: none; } }
+    /* "확인 필요" 테두리 */
+    #stage.waiting::after { content: ""; position: absolute; inset: 4px; border: 3px solid #ffd166; border-radius: 12px; pointer-events: none; animation: breathe 1.6s ease-in-out infinite; z-index: 5; }
+    #stage.hit::before { content: ""; position: absolute; inset: 0; background: rgba(255,209,102,0.22); pointer-events: none; animation: hit 1.2s ease-out forwards; z-index: 6; }
+    @keyframes breathe { 0%,100% { opacity: .25; } 50% { opacity: .95; } }
+    @keyframes hit { from { opacity: 1; } to { opacity: 0; } }
+    /* 이벤트 로그 바 */
+    #log { position: absolute; left: 12px; bottom: 10px; max-width: min(560px, calc(100% - 24px)); z-index: 7; font-size: 11px; }
+    #log-toggle { font: inherit; font-size: 10px; color: var(--muted); background: #261d1dee; border: 1px solid var(--line); border-radius: 6px 6px 0 0; padding: 2px 8px; cursor: pointer; }
+    #log ul { list-style: none; margin: 0; padding: 4px 8px; background: #1c1517e6; border: 1px solid var(--line); border-radius: 0 8px 8px 8px; max-height: 0; overflow: hidden; transition: max-height .25s; }
+    #log.open ul { max-height: 160px; }
+    #log:not(.open) ul { padding: 0 8px; border-width: 0; }
+    #log li { display: flex; gap: 6px; padding: 2px 0; color: #d9c9b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #log li:first-child { color: var(--ink); }
+    #log time { color: var(--muted); }
+    #log b { color: var(--accent); font-weight: normal; }
+    #log i { font-style: normal; width: 10px; text-align: center; }
+    #log .k-wait i, #log .k-wait b { color: #ffd166; }
+    #log .k-done i { color: #86c060; }
+    #log .empty { color: var(--muted); }
+    /* 사원증 카드 */
+    #card { position: absolute; inset: 0; background: rgba(20,12,14,0.55); display: flex; align-items: center; justify-content: center; z-index: 20; cursor: pointer; }
+    #card[hidden] { display: none; }
+    .badge { position: relative; width: 250px; background: #fbf3e2; color: #2a1d1c; border: 3px solid #2a1d1c; border-radius: 14px; padding: 18px 16px 12px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+    .badge .strap { position: absolute; top: -40px; left: 50%; width: 22px; height: 46px; transform: translateX(-50%); background: var(--c); border: 2px solid #2a1d1c; border-radius: 4px; }
+    .badge .top { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 1px; background: var(--c); margin: -18px -16px 10px; padding: 6px 12px; border-radius: 10px 10px 0 0; font-weight: bold; }
+    .badge .body { display: flex; gap: 12px; align-items: center; }
+    .badge canvas { width: 64px; height: 96px; image-rendering: pixelated; border: 2px solid #2a1d1c; border-radius: 6px; background: #efe2c6; }
+    .badge .who b { display: block; font-size: 18px; }
+    .badge .who em { display: inline-block; font-style: normal; font-size: 11px; background: var(--c); padding: 1px 6px; border-radius: 4px; margin: 3px 0; }
+    .badge .who span { display: block; font-size: 11px; color: #6e5440; }
+    .badge dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 11px; margin: 12px 0 8px; }
+    .badge dt { color: #8a7a6e; } .badge dd { margin: 0; word-break: break-all; }
+    .badge strong { font-size: 14px; }
+    .badge h4 { margin: 8px 0 4px; font-size: 11px; color: #8a7a6e; }
+    .badge ol { margin: 0; padding-left: 16px; font-size: 11px; }
+    .badge ol li { margin: 2px 0; } .badge ol small { color: #8a7a6e; margin-left: 4px; }
+    .badge .foot { margin-top: 10px; font-size: 9px; color: #a8968a; text-align: center; }
     /* 커서를 올리면 뜨는 말풍선 */
     #bubble { position: absolute; display: none; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none; z-index: 10;
       background: #fbf3e2; color: #2a1d1c; border: 2px solid #2a1d1c; border-radius: 10px; padding: 7px 10px; font-size: 12px; line-height: 1.5;
@@ -61,8 +109,16 @@
     <header>
       <div id="floors"><button data-floor="office" class="on">1F 사무실</button><button data-floor="research">B1 연구실</button></div>
       <div id="hud">불러오는 중…</div>
+      <div id="right">
+        <div id="tokens" title="토큰 사용량 (이 컴퓨터의 Claude Code 기록 기준)"></div>
+        <button id="btn-alerts" class="tog"></button>
+        <button id="btn-typing" class="tog"></button>
+      </div>
     </header>
-    <main id="stage"><div id="game"></div></main>
+    <main id="stage"><div id="game"></div>
+      <div id="log"><button id="log-toggle"></button><ul></ul></div>
+      <div id="card" hidden></div>
+    </main>
     <aside id="guide">
       <section id="zones-panel">
         <h2>부서 안내 <small>세션이 하는 일에 따라 그 부서로 걸어가요 · 캐릭터에 커서를 올리면 하는 일이 보여요</small></h2>

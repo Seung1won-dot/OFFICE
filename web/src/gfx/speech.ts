@@ -3,12 +3,13 @@
 import Phaser from "phaser";
 import { DEPTH } from "./ambience";
 
-export type SpeechKind = "work" | "wait" | "chat" | "plain";
+export type SpeechKind = "work" | "wait" | "chat" | "plain" | "done";
 const STYLE: Record<SpeechKind, { fill: number; line: number; lw: number; ink: string; size: number }> = {
   work: { fill: 0xfff3e6, line: 0xe8875a, lw: 1.5, ink: "#2a1d1c", size: 7 },
   wait: { fill: 0xffe9a8, line: 0xc9973a, lw: 1.5, ink: "#2a1d1c", size: 7 },
   chat: { fill: 0xfbf3e2, line: 0x2a1d1c, lw: 1, ink: "#2a1d1c", size: 6.5 },
   plain: { fill: 0xf6ead2, line: 0x2a1d1c, lw: 1, ink: "#2a1d1c", size: 6.5 },
+  done: { fill: 0xeaf7df, line: 0x5e9a4a, lw: 1.5, ink: "#2a1d1c", size: 7 },
 };
 
 export class Speech {

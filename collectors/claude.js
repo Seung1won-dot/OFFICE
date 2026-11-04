@@ -6,6 +6,7 @@ const path = require("path");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { expandHome } = require("../lib/config");
+const store = require("../lib/store");
 
 const TAIL_BYTES = 256 * 1024;
 const projectsDir = () => expandHome(process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects"));
@@ -53,11 +54,12 @@ function describeInput(input) {
   return "";
 }
 
-// 누적 도구 호출 수 (직급 계산용): 처음 한 번 전체를 세고, 이후엔 늘어난 부분만
-const toolTotals = new Map();
-function totalToolCalls(file, size) {
-  let c = toolTotals.get(file);
-  if (!c || size < c.offset) c = { offset: 0, count: 0, rest: "" };
+// 파일 전체 통계 (처음 한 번 다 읽고, 이후엔 늘어난 부분만): 누적 도구 호출 수(직급), 날짜별 토큰, 마지막 비용, 첫 기록 시각(입사일)
+const fileStats = new Map();
+const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+function statsOf(file, size) {
+  let c = fileStats.get(file);
+  if (!c || size < c.offset) c = { offset: 0, rest: "", tools: 0, tokensByDay: {}, tokensByHour: {}, cost: null, firstAt: null, seen: new Set(), context: 0, contextMax: 200000, limit: null };
   if (size > c.offset) {
     const fd = fs.openSync(file, "r");
     const buf = Buffer.alloc(size - c.offset);
@@ -66,17 +68,35 @@ function totalToolCalls(file, size) {
     const text = c.rest + buf.toString("utf8");
     const cut = text.lastIndexOf("\n") + 1;
     for (const line of text.slice(0, cut).split("\n")) {
-      if (!line.includes('"tool_use"')) continue;
-      try {
-        const o = JSON.parse(line);
-        if (o.type === "assistant" && !o.isSidechain) c.count += (o.message?.content || []).filter(b => b.type === "tool_use").length;
-      } catch {}
+      if (!line) continue;
+      const isAsst = line.includes('"type":"assistant"'), isCost = line.includes('"cost-state"');
+      if (!isAsst && !isCost && c.firstAt) continue;
+      if (line.includes('"rateLimitType"')) {   // 요금제 한도에 걸린 기록 (그때만 남음)
+        try { const o = JSON.parse(line); if (o.rateLimitType || o.error === "rate_limit") c.limit = { type: o.rateLimitType || null, resetsAt: (o.resetsAt || 0) * 1000, text: o.message?.content?.[0]?.text || "" }; } catch {}
+      }
+      let o; try { o = JSON.parse(line); } catch { continue; }
+      if (!c.firstAt && o.timestamp) c.firstAt = Date.parse(o.timestamp);
+      if (o.type === "cost-state" && typeof o.totalCostUSD === "number" && o.totalCostUSD > 0) c.cost = o.totalCostUSD;
+      if (o.type !== "assistant" || o.isSidechain) continue;
+      c.tools += (o.message?.content || []).filter(b => b.type === "tool_use").length;
+      const u = o.message?.usage, mid = o.message?.id;
+      if (u && mid && !c.seen.has(mid) && o.message?.model !== "<synthetic>") {   // 한 응답이 여러 줄로 기록돼도 한 번만
+        c.seen.add(mid);
+        const n = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+        const t = o.timestamp ? Date.parse(o.timestamp) : Date.now();
+        c.tokensByDay[dayKey(t)] = (c.tokensByDay[dayKey(t)] || 0) + n;
+        const hk = Math.floor(t / 3600000);
+        c.tokensByHour[hk] = (c.tokensByHour[hk] || 0) + n;
+        // 지금 대화가 차지하는 컨텍스트 = 마지막 응답의 입력 토큰 합
+        c.context = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+        if (/\[1m\]|-1m/.test(o.message?.model || "") || c.context > 200000) c.contextMax = 1000000;
+      }
     }
     c.rest = text.slice(cut);
     c.offset = size;
   }
-  toolTotals.set(file, c);
-  return c.count;
+  fileStats.set(file, c);
+  return c;
 }
 
 // 세션 작업 폴더 → GitHub 저장소 이름 (git remote)
@@ -153,6 +173,7 @@ function summarize(file) {
     else if (h.event === "PreToolUse" && h.tool) { state = "working"; activity = activityOf(h.tool); detail = shortTool(h.tool); }
   }
   if (state === "idle" && ageSec > 1800) activity = "sleep";
+  const fsx = statsOf(file, st.size);
   return {
     id,
     title: title || (lastPrompt ? lastPrompt.slice(0, 30) : "이름 없는 세션"),
@@ -163,10 +184,41 @@ function summarize(file) {
     tool: shortTool(lastTool),
     toolFull: lastTool || "",
     activeSubagents: ageSec < 600 ? [...pending.values()].filter(b => /^(Agent|Task)$/.test(b.name)).length : 0,
-    toolCount: Math.max(toolCount, totalToolCalls(file, st.size)),
+    toolCount: Math.max(toolCount, fsx.tools),
+    tokensToday: fsx.tokensByDay[dayKey(Date.now())] || 0,
+    tokens5h: Object.entries(fsx.tokensByHour).filter(([h]) => +h > Math.floor(Date.now() / 3600000) - 5).reduce((a, [, v]) => a + v, 0),
+    contextLeft: fsx.context ? Math.max(0, Math.round(100 - (fsx.context / fsx.contextMax) * 100)) : null,
+    limit: fsx.limit && fsx.limit.resetsAt > Date.now() ? fsx.limit : null,
+    cost: fsx.cost,
+    firstAt: fsx.firstAt,
     ageSec: Math.round(ageSec),
     updated: st.mtimeMs,
   };
+}
+
+// ── 이벤트 (출근 / 작업 / 확인 필요 / 완료) ──
+const events = [];            // 최근 300개, 메모리에만
+const prev = new Map();       // 세션 id → 이전 상태
+let primed = false;
+function pushEvent(s, kind, text) {
+  events.push({ t: Date.now(), id: s.id, kind, text, title: s.title });
+  if (events.length > 300) events.shift();
+}
+function detect(list) {
+  for (const s of list) {
+    store.touch(s.id, { firstSeen: s.firstAt, project: s.project, title: s.title });
+    const p = prev.get(s.id), key = `${s.state}|${s.detail}`;
+    if (primed) {
+      if (!p) { if (s.ageSec < 120) pushEvent(s, "join", "출근"); }
+      else if (p.key !== key) {
+        if (s.state === "waiting" && p.state !== "waiting") pushEvent(s, "wait", "확인이 필요해요");
+        else if (s.state === "working" && s.detail && s.activity !== "think") { pushEvent(s, "tool", s.detail); store.addRecent(s.id, s.detail); }
+        else if (s.state === "idle" && p.state !== "idle" && s.activity === "done") { pushEvent(s, "done", "작업 완료"); store.addDone(s.id); store.addRecent(s.id, "✓ 작업 완료"); }
+      }
+    }
+    prev.set(s.id, { state: s.state, key });
+  }
+  primed = true;
 }
 
 function listSessions(cfg) {
@@ -184,7 +236,9 @@ function listSessions(cfg) {
   }
   const out = [];
   for (const f of files) { try { out.push(summarize(f)); } catch {} }
-  return out.sort((a, b) => b.updated - a.updated).slice(0, max);
+  out.sort((a, b) => b.updated - a.updated);
+  detect(out);
+  return out.slice(0, max);
 }
 
 module.exports = {
@@ -193,7 +247,30 @@ module.exports = {
   check() { return fs.existsSync(projectsDir()) ? { ok: true } : { ok: false, reason: `${projectsDir()} 없음` }; },
   start() {},
   routes: {
-    "GET /api/sessions": (req, res, ctx) => ctx.send(res, 200, { now: Date.now(), host: os.hostname(), sessions: listSessions(ctx.config()) }),
+    "GET /api/sessions": (req, res, ctx) => {
+      const sessions = listSessions(ctx.config());
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const stats = {
+        doneToday: store.totalDoneToday(),
+        tokensToday: sessions.reduce((a, s) => a + (s.tokensToday || 0), 0),
+        costToday: sessions.filter(s => s.updated >= today.getTime() && s.cost).reduce((a, s) => a + s.cost, 0),
+        tokens5h: sessions.reduce((a, s) => a + (s.tokens5h || 0), 0),
+        budget5h: Number(ctx.config().tokenBudget5h) || 0,
+        limit: sessions.map(s => s.limit).filter(Boolean).sort((a, b) => b.resetsAt - a.resetsAt)[0] || null,
+      };
+      ctx.send(res, 200, { now: Date.now(), host: os.hostname(), sessions: sessions.map(({ firstAt, ...s }) => s), stats });
+    },
+    "GET /api/events": (req, res, ctx) => {
+      const since = Number(new URL(req.url, "http://x").searchParams.get("since")) || 0;
+      ctx.send(res, 200, events.filter(e => e.t > since).slice(-50));
+    },
+    // 사원증 카드
+    "GET /api/employee": (req, res, ctx) => {
+      const id = new URL(req.url, "http://x").searchParams.get("id") || "";
+      const e = store.get(id);
+      if (!e) return ctx.send(res, 404, { error: "기록 없음" });
+      ctx.send(res, 200, { firstSeen: e.firstSeen, project: e.project, title: e.title, doneToday: store.doneToday(id), recent: e.recent });
+    },
     // 훅 스크립트(hooks/office-hook.js)가 보내는 이벤트. 내용은 메모리에만 두고 저장하지 않는다
     "POST /api/hook": async (req, res, ctx) => {
       const body = await ctx.readBody(req, 64 * 1024);

@@ -54,5 +54,15 @@
     "path": "~/research-log",
     "publicMode": false,
     "floorRotateSec": 0
+  },
+  "tokenBudget5h": 0,
+  "_tokenBudget5h": "최근 5시간 토큰 예산 (0 = 표시만). 적으면 오른쪽 위에 남은 비율 막대가 나와요. 실제 요금제 한도는 Claude 앱의 사용량 화면 기준",
+  "dayCycle": {
+    "_comment": "실제 시간에 따라 창밖 하늘·조명이 바뀌고, 밤 10시~아침 7시엔 배경 직원이 nightStaffRatio 비율만 남아요",
+    "enabled": true,
+    "nightStaffRatio": 0.25
+  },
+  "alerts": {
+    "_comment": "'확인 필요' 알림. 소리·데스크톱 알림은 화면 오른쪽 위 🔔 버튼으로 켜고 꺼요"
   }
 }

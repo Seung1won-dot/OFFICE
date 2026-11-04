@@ -2,6 +2,10 @@ import Phaser from "phaser";
 import { OfficeScene } from "./scenes/OfficeScene";
 import { ResearchScene, isPublicMode } from "./scenes/ResearchScene";
 import { hideBubble } from "./ui/bubble";
+import { settings, audio, enableDesktop } from "./ui/alerts";
+import { initLog } from "./ui/eventlog";
+import { phraseDetail } from "./scenes/OfficeScene";
+import { rankOf } from "./ui/names";
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -70,3 +74,31 @@ async function renderCollectors() {
   } catch { el.textContent = ""; }
 }
 renderCollectors(); setInterval(renderCollectors, 60000);
+
+// ── 오른쪽 위 버튼: 알림(소리+데스크톱) / 타자 소리 ──
+function bindToggle(id: string, key: "alerts" | "typing", onLabel: string, offLabel: string, onEnable?: () => void) {
+  const b = document.getElementById(id) as HTMLButtonElement;
+  const paint = () => { b.classList.toggle("on", settings[key]); b.textContent = settings[key] ? onLabel : offLabel; };
+  b.addEventListener("click", () => { settings[key] = !settings[key]; if (settings[key]) { audio(); onEnable?.(); } paint(); });
+  paint();
+}
+bindToggle("btn-alerts", "alerts", "🔔 알림 켬", "🔕 알림 끔", () => { enableDesktop(); });
+bindToggle("btn-typing", "typing", "⌨ 타자 소리 켬", "⌨ 타자 소리 끔");
+// 브라우저 정책: 아무 곳이나 한 번 누르면 소리 준비
+window.addEventListener("pointerdown", () => audio(), { once: true });
+
+// ── 이벤트 로그: 세션 id → 지금 별명 + 직급 ──
+initLog((id, title) => {
+  const o = game.scene.getScene("office") as OfficeScene;
+  const w = o?.walkers?.get(id);
+  return w ? `${w.name} ${rankOf(w.session?.toolCount).title}` : title;
+}, phraseDetail);
+
+// ── 층 자동 전환 (config.json research.floorRotateSec, 0 이면 끔). 최근 30초 안에 화면을 만졌으면 쉬기 ──
+let touchedAt = 0;
+window.addEventListener("pointermove", () => { touchedAt = Date.now(); });
+(async () => {
+  let sec = 0;
+  try { sec = Number((await (await fetch("/api/config")).json()).research?.floorRotateSec) || 0; } catch { /* */ }
+  if (sec > 0) setInterval(() => { if (Date.now() - touchedAt > 30000) go(floor === "office" ? "research" : "office"); }, sec * 1000);
+})();

@@ -1,11 +1,14 @@
 import Phaser from "phaser";
 import EasyStar from "easystarjs";
-import { buildDefaultMap, TILE } from "../map/defaultMap";
+import { buildDefaultMap, TILE, G } from "../map/defaultMap";
 import { makeTilesetCanvas } from "../gfx/tileset";
 import { FW, FH, COLS, DIR_ROW, Dir, lookFor, makeSheet, hash, Team } from "../gfx/people";
 import { ensureGlowTexture, addNight, lightFromMap, addRugs, addDeskProps, addLife, sign, glow, DEPTH } from "../gfx/ambience";
 import { showBubble, hideBubble, placeBubble, esc, ago } from "../ui/bubble";
 import { Speech, SpeechKind, twoLines } from "../gfx/speech";
+import { chime, done as doneSound, notify, flash, setTypingLevel, settings } from "../ui/alerts";
+import { showCard } from "../ui/card";
+import { makeCatSheet, CAT_W, CAT_H } from "../gfx/cat";
 import { rankOf, ROLE, NICK } from "../ui/names";
 
 export interface Poi { name: string; kind: string; tx: number; ty: number; dir: Dir; pose: "stand" | "sit" | "lie" }
@@ -13,6 +16,7 @@ export interface RoomRect { key: string; label: string; x: number; y: number; w:
 interface Session {
   id: string; title: string; project: string; state: string; activity: string; tool?: string; toolFull?: string;
   detail?: string; activeSubagents?: number; updated?: number; toolCount?: number;
+  contextLeft?: number | null; tokensToday?: number; tokens5h?: number;
 }
 interface Config {
   tripKeywords: Record<string, string>; zones: Record<string, string>;
@@ -70,6 +74,10 @@ function ro(word: string) {
   const jong = c % 28;
   return jong === 0 || jong === 8 ? "로" : "으로";
 }
+/** 이벤트 로그용: "Edit server.js" → "파일 고치는 중: server.js" */
+export function phraseDetail(detail: string) {
+  return friendly({ id: "", title: "", project: "", state: "working", activity: "tool", detail, tool: detail.split(" ")[0] });
+}
 /** 도구 이름을 사람이 읽는 문장으로 */
 function friendly(s: Session) {
   const detail = (s.detail || "").trim(), tool = s.tool || detail.split(" ")[0] || "";
@@ -110,7 +118,8 @@ class Walker {
   tag: Phaser.GameObjects.Text;
   icon: Speech;
   base: { text: string; kind: SpeechKind } = { text: "", kind: "plain" };
-  sayText = ""; sayUntil = 0; inChat = false;
+  sayText = ""; sayUntil = 0; inChat = false; sayKind: SpeechKind = "chat";
+  prevState = "";
   path: { x: number; y: number }[] = [];
   tx: number; ty: number;
   dir: Dir = "down";
@@ -132,6 +141,7 @@ class Walker {
     // 커서를 올리면 머리 위 말풍선
     this.sprite.setInteractive({ useHandCursor: true });
     this.sprite.on("pointerover", () => scene.hover(this));
+    this.sprite.on("pointerdown", () => scene.clickWalker(this));
     this.sprite.on("pointerout", () => hideBubble(scene));
     this.icon = new Speech(scene);
   }
@@ -153,7 +163,7 @@ class Walker {
     this.base = { text, kind: kind === true ? "wait" : kind === false ? "plain" : kind };
   }
   /** 잠깐 말하기 (잡담) */
-  say(text: string, ms = 2600) { this.sayText = text; this.sayUntil = this.scene.time.now + ms; }
+  say(text: string, ms = 2600, kind: SpeechKind = "chat") { this.sayText = text; this.sayUntil = this.scene.time.now + ms; this.sayKind = kind; }
   // ── 실제 세션 표시: 발밑 상태 링 + 스포트라이트 ──
   ring?: Phaser.GameObjects.Ellipse; light?: Phaser.GameObjects.Image;
   stateColor() {
@@ -201,7 +211,7 @@ class Walker {
     this.tag.setPosition(s.x, s.y + 1).setDepth(DEPTH.tag).setVisible(!this.path.length && !this.npc && !this.junior);
     // 말풍선: 잡담 중이면 잡담, 아니면 계속 띄우는 상태 말풍선. 걷는 동안엔 잡담만
     const now = this.scene.time.now, chatting = now < this.sayUntil;
-    if (chatting) this.icon.set(this.sayText, "chat");
+    if (chatting) this.icon.set(this.sayText, this.sayKind);
     else this.icon.set(this.base.text, this.base.kind);
     const lying = s.angle !== 0, headY = lying ? s.y - 12 : s.y - h + (s.originY > 1 ? 1 : 0) - 1;
     const bob = this.base.kind === "work" && !chatting ? Math.round(Math.sin(now / 420 + this.tx)) : 0;
@@ -264,7 +274,8 @@ export class OfficeScene extends Phaser.Scene {
     addRugs(this, this.rooms, { dev: "#6c8cff", gh: "#3fb8a8", plan: "#b48ae0", research: "#6fbf8a", standup: "#f0c060", meet: "#8fa3c8" });
     addDeskProps(this, this.pois, ["seat_dev", "repo_desk", "plan_desk", "research_desk"]);
     lightFromMap(this, this.map, this.rooms.filter(r => r.key !== "floor"));
-    addNight(this, this.map.widthInPixels, this.map.heightInPixels);
+    this.night = addNight(this, this.map.widthInPixels, this.map.heightInPixels);
+    this.setupSky();
     addLife(this, this.map);
     this.drawRoomSigns();
 
@@ -287,6 +298,10 @@ export class OfficeScene extends Phaser.Scene {
     });
     await this.loadConfig();
     this.ready = true;
+    this.buildBoard();
+    this.loadGithub(); this.time.addEvent({ delay: 60000, loop: true, callback: () => this.loadGithub() });
+    this.dayTick(); this.time.addEvent({ delay: 60000, loop: true, callback: () => this.dayTick() });
+    this.cat = new Cat(this);
     await this.poll();
     this.time.addEvent({ delay: this.cfg.pollMs || 1000, loop: true, callback: () => this.poll() });
     this.time.addEvent({ delay: 30000, loop: true, callback: () => this.loadConfig() });
@@ -452,8 +467,9 @@ export class OfficeScene extends Phaser.Scene {
 
   // ── 배경 직원: 사무실이 북적이게. 실제 세션과 별개로 자리에서 일하다 가끔 볼일 보러 다님 ──
   ambient() {
-    const want = Math.max(0, this.cfg.ambientStaff ?? 16);
-    const npcs = [...this.walkers.values()].filter(w => w.npc);
+    const want = Math.round(Math.max(0, this.cfg.ambientStaff ?? 16) * this.staffRatio());
+    const npcs = [...this.walkers.values()].filter(w => w.npc && !w.leaving);
+    const first = !this.ambientStarted; this.ambientStarted = true;
     const HOMES: { kind: string; team: Team; nick: string; max: number }[] = [
       { kind: "repo_desk", team: "gh", nick: "깃돌이", max: 99 }, { kind: "plan_desk", team: "dev", nick: "기획이", max: 5 },
       { kind: "research_desk", team: "dev", nick: "연구리", max: 5 }, { kind: "seat_dev", team: "dev", nick: "개발이", max: 3 },
@@ -465,22 +481,26 @@ export class OfficeScene extends Phaser.Scene {
       const seat = this.pois.filter(p => p.kind === spec.kind && !this.reservedBy.get(p.name));
       if (!seat.length) break;
       const home = seat[(i * 5 + 1) % seat.length];
-      const w = this.spawn(`npc-${i}`, `npc-${i}-${spec.kind}`, false, "", spec.team);
+      const seq = this.npcSeq++;
+      const w = this.spawn(`npc-${seq}`, `npc-${i}-${spec.kind}`, false, "", spec.team);
       w.npc = true; w.home = home; w.zone = "npc";
       w.sprite.setTint(0xcfc4b8).setAlpha(0.92);   // 실제 세션이 돋보이도록 살짝 바래게
-      w.sprite.setPosition(home.tx * TILE + TILE / 2, home.ty * TILE + TILE - 1); w.tx = home.tx; w.ty = home.ty;   // 처음엔 이미 출근해 있음
-      w.target = home; this.reserve(home, w); w.arrivedAt = Date.now();
+      if (first) {   // 처음 켰을 땐 이미 출근해 있음, 이후엔 입구에서 걸어 들어옴
+        w.sprite.setPosition(home.tx * TILE + TILE / 2, home.ty * TILE + TILE - 1); w.tx = home.tx; w.ty = home.ty;
+        w.target = home; this.reserve(home, w); w.arrivedAt = Date.now();
+      } else w.goTo(home, "npc");
       w.nextAt = Date.now() + 15000 + Math.random() * 60000;
       w.tag.setVisible(false); w.tag.setAlpha(0);
       w.name = spec.nick; w.task = this.deskTask(w);
     }
-    for (const w of npcs.slice(want)) { this.release(w); w.destroy(); this.walkers.delete(w.id); }
+    // 퇴근 시간: 자리에 있는 배경 직원부터 걸어서 퇴근
+    for (const w of npcs.filter(x => !x.inChat).slice(want)) { w.task = "퇴근하는 중"; this.leave(w); }
     // 볼일 보기 / 자리로 돌아오기
     const now = Date.now();
     const ERRANDS: [string, string][] = [["coffee_machine", "커피 타는 중"], ["cafe_seat", "잠깐 쉬는 중"], ["bookshelf", "자료 찾는 중"],
       ["server_rack", "서버 점검 중"], ["standup", "화이트보드 정리 중"], ["meeting_seat", "짧은 회의 중"], ["sofa", "로비에서 통화 중"]];
     for (const w of npcs) {
-      if (w.walking || w.inChat || now < w.nextAt || !w.home) continue;
+      if (w.leaving || w.walking || w.inChat || now < w.nextAt || !w.home) continue;
       if (w.target === w.home) {
         if (Math.random() < 0.5) { w.nextAt = now + 10000 + Math.random() * 30000; continue; }   // 계속 일함
         const [kind, task] = ERRANDS[Math.floor(Math.random() * ERRANDS.length)];
@@ -526,7 +546,8 @@ export class OfficeScene extends Phaser.Scene {
   async poll() {
     if (!this.ready) return;
     let sessions: Session[] = [];
-    try { sessions = (await (await fetch("/api/sessions")).json()).sessions; } catch { return; }
+    try { const j = await (await fetch("/api/sessions")).json(); sessions = j.sessions; this.stats = j.stats || null; } catch { return; }
+    let newWait: { w: Walker; s: Session } | null = null;
     const now = Date.now(), { minStaySec, quickToolSec } = this.cfg.debounce;
     const alive = new Set<string>();
 
@@ -539,6 +560,10 @@ export class OfficeScene extends Phaser.Scene {
         w.goTo(this.freePoi(ZONE_POI[zone], undefined, w), zone);
       }
       w.session = s;
+      // 상태 전환: 새로 "확인 필요" → 알림 / 작업 → 쉬는 중 = 완료 축하
+      if (w.prevState && w.prevState !== "waiting" && s.state === "waiting") newWait = { w, s };
+      if (w.prevState === "working" && s.state === "idle" && s.activity === "done") this.celebrate(w);
+      w.prevState = s.state;
       // 이름 + 직급 (같은 프로젝트는 같은 이름, 직급은 누적 도구 호출 수)
       const rk = rankOf(s.toolCount);
       if (w.rank >= 0 && rk.index > w.rank) this.promote(w, rk.title);
@@ -590,6 +615,11 @@ export class OfficeScene extends Phaser.Scene {
     this.renameAll();
 
     const working = sessions.filter(s => s.state === "working").length, waiting = sessions.filter(s => s.state === "waiting").length;
+    // 알림: 테두리 깜빡임 + 차임 + 데스크톱 알림
+    flash(waiting, !!newWait);
+    if (newWait && settings.alerts) { chime(); notify("확인이 필요해요", `${newWait.w.name || "직원"} · ${newWait.s.title}`); }
+    setTypingLevel(working);
+    this.renderBoard(); this.renderTokens(sessions);
     const jr = [...this.walkers.values()].filter(j => j.junior && !j.leaving).length;
     this.renderGuide(sessions);
     this.hud.innerHTML = `<b>직원 ${sessions.length}명</b> · 일하는 중 ${working} · 결재 대기 ${waiting}${jr ? ` · 인턴 ${jr}` : ""}` +
@@ -619,7 +649,8 @@ export class OfficeScene extends Phaser.Scene {
     const sub = w.junior ? `${esc(this.walkers.get(w.parentId)?.name || "")} 옆 서브에이전트` : esc(s?.title || "");
     showBubble(this, () => ({ x: w.sprite.x, y: w.sprite.y - FH * w.sprite.scaleY - 2 }),
       `<b>${esc(w.name)} ${title}</b><span class="zone">${esc(role)}</span>${moving}<div>${doing}</div>` +
-      `<small>${sub}${s?.updated ? ` · ${ago(s.updated)}` : ""}${!w.junior && s?.toolCount != null ? ` · 도구 ${s.toolCount}회` : ""}</small>`);
+      `<small>${sub}${s?.updated ? ` · ${ago(s.updated)}` : ""}${!w.junior && s?.toolCount != null ? ` · 도구 ${s.toolCount}회` : ""}` +
+      `${!w.junior && s?.contextLeft != null ? ` · 컨텍스트 ${s.contextLeft}% 남음` : ""} · 클릭하면 사원증</small>`);
   }
 
   /** 역할 별명 붙이기: 부서별 "개발이", 같은 부서에 여럿이면 개발이2… 인턴은 "꼬마" + 부모 별명 */
@@ -649,11 +680,221 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
+  // ════════════ 추가 기능들 ════════════
+  stats: { doneToday: number; tokensToday: number; costToday: number; tokens5h: number; budget5h: number; limit: { type: string | null; resetsAt: number; text: string } | null } | null = null;
+  night?: Phaser.GameObjects.Rectangle;
+  ambientStarted = false; npcSeq = 0;
+  cat?: Cat;
+  skyRects: Phaser.GameObjects.Rectangle[] = [];
+  repoObjs: Phaser.GameObjects.GameObject[] = [];
+  boardText?: Phaser.GameObjects.Text;
+
+  /** 사원증 카드 (실제 세션만) */
+  clickWalker(w: Walker) {
+    if (w.npc) { w.say(["네? 부르셨어요?", "지금 바빠요~", "커피 드실래요?"][Math.floor(Math.random() * 3)], 2200); return; }
+    const s = w.session ?? this.walkers.get(w.parentId)?.session;
+    const ctxLine = s?.contextLeft != null ? ` · 컨텍스트 ${s.contextLeft}% 남음` : "";
+    showCard({ id: w.junior ? w.parentId : w.id, name: w.name, rank: w.junior ? "인턴" : rankOf(s?.toolCount).title,
+      role: (ROLE[w.zone] || ZONE_NAME[w.zone] || "") + ctxLine, dept: ZONE_NAME[w.zone] || "", color: "#e8875a",
+      spriteKey: w.key, scene: this, title: s?.title || "" });
+  }
+
+  /** 턴이 끝나면: "완료!" + 반짝이 + 소리 */
+  celebrate(w: Walker) {
+    w.say("완료!", 3500, "done");
+    if (settings.alerts) doneSound();
+    const x = w.sprite.x, y = w.sprite.y - FH;
+    const cols = [0xffd98a, 0x86c060, 0xe8875a, 0x7fb6ff, 0xf0a6a0];
+    for (let i = 0; i < 14; i++) {
+      const r = this.add.rectangle(x, y, 2, 2, cols[i % cols.length]).setDepth(DEPTH.icon + 1);
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2, v = 14 + Math.random() * 14;
+      this.tweens.add({ targets: r, x: x + Math.cos(a) * v, y: y + Math.sin(a) * v + 10, alpha: 0, angle: 180, duration: 1100 + Math.random() * 500, ease: "Quad.out", onComplete: () => r.destroy() });
+    }
+  }
+
+  /** 대표실 벽 현황판: 오늘 끝낸 작업 · 토큰 · 비용 */
+  buildBoard() {
+    const ceo = this.rooms.find(r => r.key === "ceo");
+    if (!ceo) return;
+    const w = 46, h = 26, x = ceo.x + ceo.w - w - 4, y = ceo.y + 3 * TILE + 4;   // 대표 책상 오른쪽 스탠드 현황판
+    const g = this.add.graphics().setDepth(DEPTH.sign - 1);
+    g.fillStyle(0x2a1d1c, 1).fillRoundedRect(x - 1, y - 1, w + 2, h + 2, 2);
+    g.fillStyle(0x1f2a24, 1).fillRect(x, y, w, h);
+    g.fillStyle(0xffd98a, 1).fillRect(x, y, w, 1);
+    this.boardText = this.add.text(x + 3, y + 2, "", { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "5px", color: "#e8f5d8", lineSpacing: 1 })
+      .setResolution(6).setDepth(DEPTH.sign);
+    const zone = this.add.zone(x, y, w, h).setOrigin(0).setInteractive().setDepth(DEPTH.sign);
+    zone.on("pointerover", () => {
+      const ss = [...this.walkers.values()].filter(w => !w.npc && !w.junior && w.session).map(w => w.session!);
+      const fmt = (n: number) => n >= 1e8 ? (n / 1e8).toFixed(1) + "억" : n >= 1e4 ? Math.round(n / 1e4).toLocaleString() + "만" : String(n);
+      showBubble(this, () => ({ x: x + w / 2, y }), `<b>오늘 현황판</b><div>${ss.map(s => `${esc(s.title)} · ${fmt(s.tokensToday || 0)} 토큰`).join("<br>") || "-"}</div><small>토큰은 캐시 포함 처리량이에요</small>`);
+    }).on("pointerout", () => hideBubble(this));
+  }
+  renderBoard() {
+    if (!this.boardText || !this.stats) return;
+    const st = this.stats, fmt = (n: number) => n >= 1e8 ? (n / 1e8).toFixed(1) + "억" : n >= 1e4 ? Math.round(n / 1e4).toLocaleString() + "만" : String(n);
+    this.boardText.setText(`오늘 완료  ${st.doneToday}건
+토큰  ${fmt(st.tokensToday)}
+${st.costToday ? `비용  $${st.costToday.toFixed(2)}` : "비용  -"}`);
+  }
+
+  /** 오른쪽 위 토큰 위젯 */
+  renderTokens(sessions: Session[]) {
+    const el = document.getElementById("tokens"); if (!el || !this.stats) return;
+    const st = this.stats, fmt = (n: number) => n >= 1e8 ? (n / 1e8).toFixed(1) + "억" : n >= 1e4 ? Math.round(n / 1e4).toLocaleString() + "만" : String(n);
+    const busy = sessions.filter(s => s.state !== "idle" && s.contextLeft != null).sort((a, b) => (a.contextLeft ?? 100) - (b.contextLeft ?? 100))[0];
+    let html = "";
+    if (st.limit) {
+      const t = new Date(st.limit.resetsAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+      html += `<span class="lim">한도 도달 · ${t} 리셋</span>`;
+    } else if (st.budget5h) {
+      const left = Math.max(0, 100 - Math.round((st.tokens5h / st.budget5h) * 100));
+      html += `<span class="bar" title="최근 5시간 ${fmt(st.tokens5h)} / 예산 ${fmt(st.budget5h)}"><i style="width:${left}%;background:${left < 20 ? "#ff6b5a" : left < 50 ? "#d6a748" : "#86c060"}"></i></span><span>5시간 예산 ${left}% 남음</span>`;
+    } else html += `<span title="config.json 의 tokenBudget5h 를 정하면 남은 비율이 보여요">5시간 ${fmt(st.tokens5h)}</span>`;
+    html += `<span>오늘 ${fmt(st.tokensToday)}</span>`;
+    if (busy) html += `<span title="${esc(busy.title)} 의 남은 대화 공간" class="${(busy.contextLeft ?? 100) < 20 ? "warn" : ""}">컨텍스트 ${busy.contextLeft}%</span>`;
+    el.innerHTML = html;
+  }
+
+  /** GitHub 섬: 최근 7일 활동한 저장소에 책상 배정 + 이름표·언어 색·CI 램프, 나머지는 서류 캐비닛 */
+  async loadGithub() {
+    let gh: any;
+    try { const r = await fetch("/api/github"); if (!r.ok) return; gh = await r.json(); } catch { return; }
+    if (gh.status !== "ok") return;
+    this.repoObjs.forEach(o => o.destroy()); this.repoObjs = [];
+    const weekAgo = Date.now() - 7 * 864e5;
+    const active = gh.repos.filter((r: any) => Date.parse(r.pushedAt) >= weekAgo).sort((a: any, b: any) => Date.parse(b.pushedAt) - Date.parse(a.pushedAt));
+    const inactive = gh.repos.filter((r: any) => Date.parse(r.pushedAt) < weekAgo);
+    const desks = this.pois.filter(p => p.kind === "repo_desk").sort((a, b) => Number(a.name.split("_").pop()) - Number(b.name.split("_").pop()));
+    active.slice(0, desks.length).forEach((repo: any, i: number) => {
+      const p = desks[i], dy = p.dir === "down" ? 1 : -1;
+      const x = p.tx * TILE + TILE / 2, y = (p.ty + dy) * TILE + (p.dir === "down" ? 4 : 12);   // 위 줄은 책상 윗면, 아래 줄은 책상 앞면
+      const col = repo.langColor || "#a39bb5";
+      let name = repo.name; if (name.length > 9) name = name.slice(0, 8) + "…";
+      const t = this.add.text(x, y, name, { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "4.5px", color: "#2a1d1c", backgroundColor: "#f6ead2", padding: { x: 1, y: 0 } })
+        .setOrigin(0.5, 0.5).setResolution(8).setDepth(DEPTH.tag - 1);
+      const chip = this.add.rectangle(x - t.width / 2 - 2, y, 2, 4, Phaser.Display.Color.HexStringToColor(col).color).setDepth(DEPTH.tag - 1);
+      this.repoObjs.push(t, chip);
+      if (repo.ci === "FAILURE" || repo.ci === "ERROR" || repo.ci === "PENDING") {
+        const fail = repo.ci !== "PENDING", lx = p.tx * TILE + 13, ly = (p.ty + dy) * TILE + (p.dir === "down" ? 4 : 2);
+        const lamp = this.add.circle(lx, ly, 1.6, fail ? 0xff4d4d : 0xffd166).setDepth(DEPTH.glow);
+        const gl = glow(this, lx, ly, fail ? "#ff4d4d" : "#ffd166", 12, 0.6, 0.8);
+        this.tweens.add({ targets: lamp, alpha: 0.25, duration: fail ? 450 : 900, yoyo: true, repeat: -1 });
+        this.repoObjs.push(lamp, gl);
+      }
+      const zone = this.add.zone(p.tx * TILE, (p.ty + dy) * TILE, TILE, TILE).setOrigin(0).setInteractive().setDepth(DEPTH.tag);
+      zone.on("pointerover", () => showBubble(this, () => ({ x, y: (p.ty + dy) * TILE }), `<b>${esc(repo.name)}</b><span class="zone">${esc(repo.language || "")}</span>` +
+        `<div>${esc(repo.description || "설명 없음")}</div><div>최근 커밋: ${esc(repo.lastCommit || "-")}</div>` +
+        `<small>CI ${repo.ci || "없음"} · PR ${repo.openPRs} · 이슈 ${repo.openIssues} · 이번 주 커밋 ${repo.commits7d} · ${ago(Date.parse(repo.pushedAt))}</small>`)).on("pointerout", () => hideBubble(this));
+      this.repoObjs.push(zone);
+    });
+    // 서류 캐비닛: 오래 쉬는 저장소 목록
+    const arch = this.rooms.find(r => r.key === "archive");
+    if (arch) {
+      const zone = this.add.zone(arch.x, arch.y, arch.w, arch.h).setOrigin(0).setInteractive().setDepth(1);
+      zone.on("pointerover", () => showBubble(this, () => ({ x: arch.x + arch.w / 2, y: arch.y + 10 }), `<b>서류 캐비닛</b><span class="zone">7일 넘게 쉬는 저장소 ${inactive.length}개</span>` +
+        `<div>${inactive.slice(0, 12).map((r: any) => `${esc(r.name)} <small>${ago(Date.parse(r.pushedAt))}</small>`).join("<br>") || "없음"}</div>`)).on("pointerout", () => hideBubble(this));
+      this.repoObjs.push(zone);
+    }
+  }
+
+  // ── 하루 흐름: 창밖 하늘, 실내 밝기, 배경 직원 출퇴근 ──
+  setupSky() {
+    this.map.getLayer("walls")?.data.forEach((row, ty) => row.forEach((t, tx) => {
+      if (t.index === G.WINDOW) this.skyRects.push(this.add.rectangle(tx * TILE + 2, ty * TILE + 2, 12, 11, 0x9fd3ff, 0).setOrigin(0).setDepth(1.5));
+    }));
+  }
+  phase() {
+    const h = new Date().getHours() + new Date().getMinutes() / 60;
+    return h >= 8 && h < 17 ? "day" : (h >= 6 && h < 8) || (h >= 17 && h < 19.5) ? "dusk" : "night";
+  }
+  dayTick() {
+    const ph = this.phase();
+    const sky = { day: [0xa8dcff, 0.92], dusk: [0xf0a070, 0.8], night: [0x1b2342, 0] }[ph] as [number, number];
+    this.skyRects.forEach(r => r.setFillStyle(sky[0], sky[1]));
+    this.night?.setAlpha(ph === "day" ? 0.25 : ph === "dusk" ? 0.6 : 1);   // addNight 기본 0.26 의 배율
+  }
+  /** 근무 시간에 따른 배경 직원 비율: 밤 10시~아침 7시는 일부만 야근 */
+  staffRatio() {
+    const dc = (this.cfg as any).dayCycle || {};
+    if (dc.enabled === false) return 1;
+    const h = new Date().getHours() + new Date().getMinutes() / 60, night = dc.nightStaffRatio ?? 0.25;
+    if (h >= 22 || h < 7) return night;
+    if (h < 9) return night + (1 - night) * ((h - 7) / 2);     // 7~9시 출근 러시
+    if (h >= 20) return 1 - (1 - night) * ((h - 20) / 2);       // 20~22시 하나둘 퇴근
+    return 1;
+  }
+
   update(_t: number, dms: number) {
     placeBubble();
+    this.cat?.update(dms / 1000);
     for (const w of [...this.walkers.values()]) {
       w.update(dms / 1000);
       if (w.leaving && !w.walking && w.tx === this.entrance.tx && w.ty === this.entrance.ty) { w.destroy(); this.walkers.delete(w.id); }
     }
+  }
+}
+
+// ════════════ 사무실 고양이 '버그' ════════════
+class Cat {
+  sprite: Phaser.GameObjects.Sprite;
+  path: { x: number; y: number }[] = [];
+  tx = 20; ty = 16; nextAt = 0; mode: "sit" | "nap" = "sit"; z?: Phaser.GameObjects.Text;
+  constructor(public scene: OfficeScene) {
+    if (!scene.textures.exists("cat")) {
+      const tex = scene.textures.addCanvas("cat", makeCatSheet())!;
+      for (let i = 0; i < 4; i++) tex.add(i, 0, i * CAT_W, 0, CAT_W, CAT_H);
+    }
+    const start = this.randomTile();
+    this.tx = start.x; this.ty = start.y;
+    this.sprite = scene.add.sprite(this.tx * TILE + 8, this.ty * TILE + 15, "cat", 0).setOrigin(0.5, 1).setInteractive({ useHandCursor: true });
+    this.sprite.on("pointerover", () => showBubble(scene, () => ({ x: this.sprite.x, y: this.sprite.y - CAT_H - 2 }),
+      `<b>사무실 고양이 '버그'</b><span class="zone">${this.path.length ? "산책 중" : this.mode === "nap" ? "낮잠 중" : "구경 중"}</span><div>버그는 잡지 않고 키웁니다</div>`))
+      .on("pointerout", () => hideBubble(scene))
+      .on("pointerdown", () => { this.sprite.setFrame(0); this.scene.tweens.add({ targets: this.sprite, y: this.sprite.y - 3, duration: 120, yoyo: true }); });
+  }
+  randomTile() {
+    const col = this.scene.map.getLayer("collision")!.data;
+    for (let k = 0; k < 200; k++) {
+      const x = 2 + Math.floor(Math.random() * 44), y = 9 + Math.floor(Math.random() * 14);
+      if (!col[y]?.[x] || col[y][x].index > 0) continue;
+      if (this.scene.pois.some(p => p.tx === x && p.ty === y)) continue;
+      return { x, y };
+    }
+    return { x: 20, y: 16 };
+  }
+  /** 자는 직원 옆 빈 칸 */
+  napSpot() {
+    const col = this.scene.map.getLayer("collision")!.data;
+    const sleepers = [...this.scene.walkers.values()].filter(w => !w.walking && w.target && w.target.pose === "lie" && w.tx === w.target.tx && w.ty === w.target.ty);
+    for (const w of sleepers) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1]]) {
+      const x = w.tx + dx, y = w.ty + dy;
+      if (col[y]?.[x] && col[y][x].index === 0 && !this.scene.pois.some(p => p.tx === x && p.ty === y)) return { x, y };
+    }
+    return null;
+  }
+  update(dt: number) {
+    const s = this.sprite, now = this.scene.time.now;
+    if (this.path.length) {
+      const n = this.path[0], gx = n.x * TILE + 8, gy = n.y * TILE + 15, dx = gx - s.x, dy = gy - s.y, d = Math.hypot(dx, dy), step = 30 * dt;
+      if (Math.abs(dx) > 0.3) s.setFlipX(dx < 0);
+      if (d <= step) { s.x = gx; s.y = gy; this.tx = n.x; this.ty = n.y; this.path.shift(); } else { s.x += dx / d * step; s.y += dy / d * step; }
+      s.setFrame(1 + (Math.floor(now / 160) % 2));
+      if (!this.path.length) { this.nextAt = now + 12000 + Math.random() * 18000; s.setFrame(this.mode === "nap" ? 3 : 0); }
+    } else if (now > this.nextAt) {
+      // 자는 직원이 있으면 70% 확률로 그 옆에 가서 같이 졸고, 아니면 아무 데나 가서 앉거나 졸기
+      const nap = this.napSpot(), goNap = !!nap && Math.random() < 0.7;
+      const dest = goNap ? nap! : this.randomTile();
+      this.mode = goNap || Math.random() < 0.3 ? "nap" : "sit";
+      this.nextAt = now + 60000;
+      this.scene.findPath(this.tx, this.ty, dest.x, dest.y, (p) => { this.path = p ? p.slice(1) : []; if (!this.path.length) this.nextAt = now + 8000; });
+    }
+    s.setDepth(10 + s.y);
+    // 낮잠 중이면 z
+    if (this.mode === "nap" && !this.path.length) {
+      if (!this.z) this.z = this.scene.add.text(0, 0, "z", { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "6px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 2 }).setResolution(4);
+      this.z.setVisible(true).setPosition(s.x + 4, s.y - CAT_H - 2 - (Math.floor(now / 600) % 3)).setDepth(DEPTH.icon);
+      s.setFrame(3);
+    } else this.z?.setVisible(false);
   }
 }
