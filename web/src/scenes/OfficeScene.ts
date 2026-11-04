@@ -5,6 +5,7 @@ import { makeTilesetCanvas } from "../gfx/tileset";
 import { FW, FH, COLS, DIR_ROW, Dir, lookFor, makeSheet, hash, Team } from "../gfx/people";
 import { ensureGlowTexture, addNight, lightFromMap, addRugs, addDeskProps, addLife, sign, glow, DEPTH } from "../gfx/ambience";
 import { showBubble, hideBubble, placeBubble, esc, ago } from "../ui/bubble";
+import { Speech, SpeechKind, twoLines } from "../gfx/speech";
 import { rankOf, ROLE, NICK } from "../ui/names";
 
 export interface Poi { name: string; kind: string; tx: number; ty: number; dir: Dir; pose: "stand" | "sit" | "lie" }
@@ -42,6 +43,25 @@ const ZONE_ICON: Record<string, string> = {
   dev: "</>", lib: "책", srv: ">_", research: "www", plan: "기획", gh: "git", meet: "…", ceo: "!", cafe: "커피", nap: "z", standup: "회의",
 };
 const SPEED = 46; // px/s
+
+// 잡담 대본 (번갈아 말함)
+const CHATS: string[][] = [
+  ["점심 뭐 먹을까요?", "김치찌개 어때요?", "좋아요, 12시에 가요!"],
+  ["어제 배포 잘 됐어요?", "네, 롤백 없이 끝났어요", "다행이다…"],
+  ["커피 한 잔 더 해야겠어요", "저도요. 오늘 PR이 많네요"],
+  ["회의 몇 시였죠?", "3시요. 자료 다 됐어요?", "거의요!"],
+  ["버그 원인 찾았어요?", "결국 캐시였어요…", "늘 캐시죠 ㅋㅋ"],
+  ["Claude 세션들 열일하네요", "우리도 힘내요!"],
+  ["주말에 뭐 하셨어요?", "등산 다녀왔어요", "부지런하시네요"],
+  ["이거 리뷰 좀 봐줄 수 있어요?", "네, 5분만요"],
+  ["오늘 날씨 좋네요", "퇴근하고 산책 가야지"],
+  ["스탠드업 때 뭐 말하지…", "어제 한 거 말하면 돼요"],
+  ["서버 로그 이상한 거 봤어요?", "아까 재시작했어요", "아 그래서였구나"],
+  ["테스트 다 초록불이에요!", "오 축하해요!"],
+  ["회식 이번 주 금요일이래요", "어디서요?", "고깃집이요!"],
+  ["이 함수 이름 뭐로 하지…", "naming은 언제나 어렵죠"],
+];
+const SOLO = ["휴, 다 끝났다", "커피가 맛있네", "다음 일은 뭘까", "잠깐 쉬어야지", "오늘 꽤 했다"];
 
 /** 받침 따라 "로/으로" */
 function ro(word: string) {
@@ -88,7 +108,9 @@ function stateKey(s: Session) {
 class Walker {
   sprite: Phaser.GameObjects.Sprite;
   tag: Phaser.GameObjects.Text;
-  icon: Phaser.GameObjects.Text;
+  icon: Speech;
+  base: { text: string; kind: SpeechKind } = { text: "", kind: "plain" };
+  sayText = ""; sayUntil = 0; inChat = false;
   path: { x: number; y: number }[] = [];
   tx: number; ty: number;
   dir: Dir = "down";
@@ -111,7 +133,7 @@ class Walker {
     this.sprite.setInteractive({ useHandCursor: true });
     this.sprite.on("pointerover", () => scene.hover(this));
     this.sprite.on("pointerout", () => hideBubble(scene));
-    this.icon = scene.add.text(0, 0, "", { ...font, color: "#141821", backgroundColor: "#eef0f4", padding: { x: 3, y: 1 } }).setOrigin(0.5, 1).setResolution(4).setVisible(false);
+    this.icon = new Speech(scene);
   }
   get walking() { return this.path.length > 0; }
   goTo(poi: Poi | null, zone: string) {
@@ -126,11 +148,12 @@ class Walker {
       if (!this.path.length) this.arrivedAt = Date.now();
     });
   }
-  setIcon(text: string, kind: boolean | "work" = false) {
-    const bg = kind === "work" ? "#e8875a" : kind ? "#ffd166" : "#f6ead2";
-    if (this.icon.text !== text) this.icon.setText(text);
-    this.icon.setVisible(!!text).setBackgroundColor(bg);
+  /** 계속 떠 있는 말풍선 (하는 일 / 확인 필요 / 작은 표시) */
+  setIcon(text: string, kind: boolean | "work" | SpeechKind = false) {
+    this.base = { text, kind: kind === true ? "wait" : kind === false ? "plain" : kind };
   }
+  /** 잠깐 말하기 (잡담) */
+  say(text: string, ms = 2600) { this.sayText = text; this.sayUntil = this.scene.time.now + ms; }
   // ── 실제 세션 표시: 발밑 상태 링 + 스포트라이트 ──
   ring?: Phaser.GameObjects.Ellipse; light?: Phaser.GameObjects.Image;
   stateColor() {
@@ -176,7 +199,14 @@ class Walker {
     s.setDepth(10 + s.y);
     const h = FH * s.scaleY;
     this.tag.setPosition(s.x, s.y + 1).setDepth(DEPTH.tag).setVisible(!this.path.length && !this.npc && !this.junior);
-    this.icon.setPosition(s.x, s.y - h - 1).setDepth(DEPTH.icon);
+    // 말풍선: 잡담 중이면 잡담, 아니면 계속 띄우는 상태 말풍선. 걷는 동안엔 잡담만
+    const now = this.scene.time.now, chatting = now < this.sayUntil;
+    if (chatting) this.icon.set(this.sayText, "chat");
+    else this.icon.set(this.base.text, this.base.kind);
+    const lying = s.angle !== 0, headY = lying ? s.y - 12 : s.y - h + (s.originY > 1 ? 1 : 0) - 1;
+    const bob = this.base.kind === "work" && !chatting ? Math.round(Math.sin(now / 420 + this.tx)) : 0;
+    this.icon.at(s.x, headY, bob);
+    this.icon.box.setDepth(DEPTH.icon + s.y / 1000);
     this.updateMarker();
   }
   destroy() { this.sprite.destroy(); this.tag.destroy(); this.icon.destroy(); this.ring?.destroy(); this.light?.destroy(); }
@@ -379,6 +409,47 @@ export class OfficeScene extends Phaser.Scene {
     this.walkers.set(id, w);
     return w;
   }
+  // ── 잡담: 일 안 하는 직원 둘이 마주 보는 자리로 가서 몇 마디 주고받음 ──
+  convs: { a: Walker; b: Walker; lines: string[]; i: number; nextAt: number; started: number }[] = [];
+  pairs: [Poi, Poi][] | null = null;
+  chatPairs() {
+    if (this.pairs) return this.pairs;
+    const by = (n: string) => this.pois.find(p => p.name === n);
+    const out: [Poi, Poi][] = [];
+    for (let k = 1; by(`cafe_seat_${2 * k}`); k++) out.push([by(`cafe_seat_${2 * k - 1}`)!, by(`cafe_seat_${2 * k}`)!]);   // 탕비실 테이블 마주 보기
+    for (let i = 1; i <= 4; i++) { const a = by(`meeting_seat_${i}`), b = by(`meeting_seat_${i + 4}`); if (a && b) out.push([a, b]); }   // 회의 테이블 건너편
+    for (const [a, b] of [["sofa_1", "sofa_2"], ["standup_2", "standup_3"], ["standup_4", "standup_5"]]) if (by(a) && by(b)) out.push([by(a)!, by(b)!]);
+    return (this.pairs = out);
+  }
+  chats() {
+    const now = Date.now();
+    const end = (c: (typeof this.convs)[number]) => {
+      for (const w of [c.a, c.b]) { w.inChat = false; w.nextAt = now + 800 + Math.random() * 2000; }
+      this.convs = this.convs.filter(x => x !== c);
+    };
+    for (const c of [...this.convs]) {
+      if (!this.walkers.has(c.a.id) || !this.walkers.has(c.b.id)) { end(c); continue; }
+      const ready = [c.a, c.b].every(w => !w.walking && w.target && w.tx === w.target.tx && w.ty === w.target.ty);
+      if (!ready) { if (now - c.started > 45000) end(c); continue; }
+      if (now < c.nextAt) continue;
+      if (c.i < c.lines.length) { (c.i % 2 ? c.b : c.a).say(c.lines[c.i], 2700); c.i++; c.nextAt = now + 3000; }
+      else end(c);
+    }
+    if (this.convs.length >= 2 || Math.random() > 0.15) return;
+    const idle = [...this.walkers.values()].filter(w => w.npc && !w.inChat && !w.walking && w.home && w.target === w.home);
+    if (idle.length < 2) return;
+    const free = this.chatPairs().filter(([p, q]) => !this.reservedBy.get(p.name) && !this.reservedBy.get(q.name));
+    if (!free.length) return;
+    const a = idle.splice(Math.floor(Math.random() * idle.length), 1)[0], b = idle[Math.floor(Math.random() * idle.length)];
+    const [p, q] = free[Math.floor(Math.random() * free.length)];
+    for (const [w, spot] of [[a, p], [b, q]] as const) {
+      const home = w.home!;
+      w.goTo(spot, "npc"); if (!this.reservedBy.get(home.name)) this.reserve(home, w);
+      w.inChat = true; w.task = "동료와 잡담 중";
+    }
+    this.convs.push({ a, b, lines: CHATS[Math.floor(Math.random() * CHATS.length)], i: 0, nextAt: 0, started: now });
+  }
+
   // ── 배경 직원: 사무실이 북적이게. 실제 세션과 별개로 자리에서 일하다 가끔 볼일 보러 다님 ──
   ambient() {
     const want = Math.max(0, this.cfg.ambientStaff ?? 16);
@@ -409,7 +480,7 @@ export class OfficeScene extends Phaser.Scene {
     const ERRANDS: [string, string][] = [["coffee_machine", "커피 타는 중"], ["cafe_seat", "잠깐 쉬는 중"], ["bookshelf", "자료 찾는 중"],
       ["server_rack", "서버 점검 중"], ["standup", "화이트보드 정리 중"], ["meeting_seat", "짧은 회의 중"], ["sofa", "로비에서 통화 중"]];
     for (const w of npcs) {
-      if (w.walking || now < w.nextAt || !w.home) continue;
+      if (w.walking || w.inChat || now < w.nextAt || !w.home) continue;
       if (w.target === w.home) {
         if (Math.random() < 0.5) { w.nextAt = now + 10000 + Math.random() * 30000; continue; }   // 계속 일함
         const [kind, task] = ERRANDS[Math.floor(Math.random() * ERRANDS.length)];
@@ -483,10 +554,13 @@ export class OfficeScene extends Phaser.Scene {
         if (stable && stayed && !w.walking) { w.goTo(this.freePoi(ZONE_POI[zone], undefined, w), zone); w.want = ""; }
       }
       // 머리 위 아이콘: 대기 중이면 "!", 이동 보류 중이면 하려는 일의 아이콘
-      if (s.state === "waiting" || (w.zone === "ceo" && !w.walking)) w.setIcon("! 확인 필요", true);
-      else if (s.state === "working") { const t = friendly(s); w.setIcon(t.length > 18 ? t.slice(0, 17) + "…" : t, "work"); }
+      if (s.state === "waiting" || (w.zone === "ceo" && !w.walking)) w.setIcon("! 확인이 필요해요", "wait");
+      else if (s.state === "working") w.setIcon(twoLines(friendly(s)), "work");
+      else if (s.activity === "sleep" || w.zone === "nap") w.setIcon("Zzz…", "plain");
       else if (w.want) w.setIcon(ZONE_ICON[w.want] || "");
       else w.setIcon("");
+      // 탕비실에서 쉬는 세션은 가끔 혼잣말
+      if (s.state === "idle" && w.zone === "cafe" && !w.walking && Math.random() < 0.025) w.say(SOLO[Math.floor(Math.random() * SOLO.length)], 3000);
       // 이름표: 상태 색 배지
       w.tag.setBackgroundColor(s.state === "working" ? "#e8875a" : s.state === "waiting" ? "#ffd166" : "#5a4a44")
         .setColor(s.state === "idle" ? "#f6ead2" : "#2a1d1c").setStroke("#2a1d1c", s.state === "idle" ? 2 : 0).setPadding(3, 1, 3, 1);
@@ -512,6 +586,7 @@ export class OfficeScene extends Phaser.Scene {
     // 끝난 세션·서브에이전트는 입구로 퇴근
     for (const w of this.walkers.values()) if (!w.npc && !alive.has(w.id) && !w.leaving) this.leave(w);
     this.ambient();
+    this.chats();
     this.renameAll();
 
     const working = sessions.filter(s => s.state === "working").length, waiting = sessions.filter(s => s.state === "waiting").length;
