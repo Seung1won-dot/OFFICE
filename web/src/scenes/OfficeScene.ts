@@ -6,6 +6,8 @@ import { makeTilesetCanvas } from "../gfx/tileset";
 import { DIR_ROW, Dir, hash, Team } from "../gfx/people";
 import { MW as MFW, MH as MFH, MCOLS, monsterLook, makeMonsterSheet, Species, Stage } from "../gfx/monsters";
 import { addOutdoor } from "../gfx/outdoor";
+import { describeCommand } from "../ui/commands";
+import { renderMembers, hideMembers, membersHeight, onMembersResize, Member } from "../ui/members";
 import { ensureEmotes, emoteFrame, Emote } from "../gfx/emotes";
 import { loadSkins, pickSkin, makeSkinSheet, skinName, SkinSet, mainSkins, fileKey } from "../gfx/skins";
 
@@ -98,7 +100,8 @@ function friendly(s: Session) {
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool)) return `파일 고치는 중${a}`;
   if (/^Read$/.test(tool)) return `파일 읽는 중${a}`;
   if (/^(Grep|Glob|LS)$/.test(tool)) return `코드 찾아보는 중${a}`;
-  if (/^(Bash|Monitor|BashOutput)$/.test(tool)) return `터미널 명령 실행 중${a}`;
+  if (/^Bash$/.test(tool)) return arg ? describeCommand(arg) : "터미널 명령 실행 중";   // 명령어 대신 읽기 쉬운 말
+  if (/^(Monitor|BashOutput)$/.test(tool)) return "실행 결과 지켜보는 중";
   if (/^(WebSearch)$/.test(tool)) return `웹 검색 중${a}`;
   if (/^(WebFetch)$|browser|navigate|screenshot|read_page|get_page_text|computer|javascript|tabs_|find|form_input|resize|preview/i.test(tool)) return "브라우저로 화면 확인 중";
   if (/^(Agent|Task)$/.test(tool)) return `서브에이전트에게 일 맡기는 중${a}`;
@@ -150,6 +153,7 @@ class Walker {
   session: Session | null = null;
   name = ""; rank = -1;
   npc = false; home: Poi | null = null; nextAt = 0; task = "";   // 배경 직원
+  sepX = 0; sepTarget = 0;   // 같은 칸에 여럿이 서면 옆으로 비켜 서는 거리(px)
   skinned = false;   // 개인용 스킨 그림 (그림자를 따로 깔아 줌)
   shadow?: Phaser.GameObjects.Ellipse; emote?: Phaser.GameObjects.Image; doneAt = 0; prevActivity = "";
   mainNpc = false;   // 주인공(skins/main) 중 세션에 안 쓰인 아이 — 퇴근 없이 늘 사무실에 있음
@@ -218,6 +222,7 @@ class Walker {
       const n = this.path[0], gx = n.x * TILE + TILE / 2, gy = n.y * TILE + TILE - 1;
       const now0 = this.scene.time.now;
       if (!this.wasWalking) { this.wasWalking = true; this.walkStart = now0; this.oy = 0; }
+      this.sepX = 0; this.sepTarget = 0;
       const dx = gx - this.wx, dy = gy - this.wy, d = Math.hypot(dx, dy);
       // 출발할 땐 천천히 → 정상 속도, 마지막 칸에선 살짝 감속
       let ease = Math.min(1, 0.35 + (now0 - this.walkStart) / 400);
@@ -258,7 +263,8 @@ class Walker {
       let oy = 0;
       if (!lie && !sit) oy = ((now + this.tx * 131) % 1800) < 900 ? 0 : -1;                 // 숨쉬기
       if (acting && this.idleAct === "stretch") oy = Math.floor(now / 200) % 2 ? -2 : 0;   // 기지개 폴짝
-      this.oy = oy; s.setPosition(Math.round(this.wx), Math.round(this.wy) + oy);
+      this.sepX += (this.sepTarget - this.sepX) * 0.15;   // 스르륵 비켜 섬
+      this.oy = oy; s.setPosition(Math.round(this.wx + this.sepX), Math.round(this.wy) + oy);
       // 멈춰 선 직후 한 번 눌렸다 펴짐, 그 뒤엔 아주 느린 숨쉬기
       const since = now - this.arrivedAtT;
       const land = since < 260 ? Math.sin(since / 260 * Math.PI) : 0;
@@ -289,7 +295,7 @@ class Walker {
     const s = this.sprite;
     if (!this.shadow) this.shadow = this.scene.add.ellipse(s.x, s.y, 16, 5, 0x2a2018, 0.22);
     const lie = s.angle !== 0, sitting = s.frame.name !== undefined && [4, 5, 7].includes(Number(s.frame.name) % 8);
-    this.shadow.setVisible(!lie && !sitting && s.visible).setPosition(Math.round(this.wx), Math.round(this.wy) - 1)
+    this.shadow.setVisible(!lie && !sitting && s.visible).setPosition(Math.round(this.wx + this.sepX), Math.round(this.wy) - 1)
       .setScale(this.walking ? 0.9 : 1, 1).setDepth(9 + s.y).setAlpha(s.alpha * 0.9);
   }
   /** 머리 옆 상태 아이콘: 확인 필요 ❗ · 생각 중 💭 · 방금 끝냄 ✨ (실제 세션만) */
@@ -396,7 +402,10 @@ export class OfficeScene extends Phaser.Scene {
 
     // ④ 화면 맞춤 (정수 배율)
     this.fit(); window.addEventListener("resize", () => this.fit());
-    this.events.on("wake", () => this.fit());   // B1 연구실에서 돌아오면 캔버스를 다시 화면 크기로
+    this.events.on("wake", () => { this.fit(); hideMembers(false); });
+    this.events.on("sleep", () => hideMembers(true));
+    let lastTop = -1;
+    onMembersResize(() => { const t = membersHeight(); if (t !== lastTop) { lastTop = t; this.fit(); } });   // B1 연구실에서 돌아오면 캔버스를 다시 화면 크기로
     new ResizeObserver(() => this.fit()).observe(document.getElementById("stage")!);
 
     this.hud = document.getElementById("hud")!;
@@ -428,12 +437,13 @@ export class OfficeScene extends Phaser.Scene {
     if (!this.map || !this.sys.isActive()) return;
     // 맵 영역(#stage)에 꽉 차게. 2배 이상이면 정수 배율(선명), 그보다 작으면(화면 반쪽 분할 등) 소수 배율 허용
     const W = this.map.widthInPixels, H = this.map.heightInPixels;
-    const sb = document.getElementById("stage")!.getBoundingClientRect(), box = { width: sb.width - 24, height: sb.height - 24 };
+    const top = membersHeight();   // 위쪽 멤버 보드 자리는 비워 둠
+    const sb = document.getElementById("stage")!.getBoundingClientRect(), box = { width: sb.width - 24, height: sb.height - 24 - top };
     let z = Math.min(box.width / W, box.height / H);
     z = Math.max(0.5, Math.floor(z * 8) / 8);   // 건물이 화면에 꽉 차게 (1/8 단위)
     // 캔버스는 #stage 전체 — 건물 둘레 남는 곳은 바깥 풍경(gfx/outdoor)이 보인다
     this.scale.resize(Math.floor(sb.width), Math.floor(sb.height));
-    this.cameras.main.setZoom(z).centerOn(W / 2, H / 2).setRoundPixels(true);
+    this.cameras.main.setZoom(z).centerOn(W / 2, H / 2 - top / 2 / z).setRoundPixels(true);
   }
 
   renderGuide(sessions: Session[]) {
@@ -783,8 +793,46 @@ export class OfficeScene extends Phaser.Scene {
     this.renderBoard(); this.renderTokens(sessions); this.updatePlates();
     const jr = [...this.walkers.values()].filter(j => j.junior && !j.leaving).length;
     this.renderGuide(sessions);
+    this.renderMemberBoard();
     this.hud.innerHTML = `<b>직원 ${sessions.length}명</b> · 일하는 중 ${working} · 결재 대기 ${waiting}${jr ? ` · 인턴 ${jr}` : ""}` +
       `${this.inStandup() ? " · <b>스탠드업 중</b>" : ""} <span>· 스탠드업 ${this.cfg.standup.times.join(", ")} · 맵: ${this.hud.dataset.source}</span>`;
+  }
+
+  /** 같은 칸에 멈춰 선 직원이 둘 이상이면 좌우로 나눠 세움 (실제 세션이 가운데, 배경 직원이 옆으로) */
+  spreadOut() {
+    const groups = new Map<string, Walker[]>();
+    for (const w of this.walkers.values()) {
+      if (w.walking || w.leaving) { w.sepTarget = 0; continue; }
+      const k = `${w.tx},${w.ty}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(w);
+    }
+    const STEP = [0, 9, -9, 18, -18, 27, -27];
+    for (const g of groups.values()) {
+      g.sort((a, b) => Number(a.npc) - Number(b.npc) || (a.id < b.id ? -1 : 1));
+      g.forEach((w, i) => { w.sepTarget = g.length > 1 ? STEP[Math.min(i, STEP.length - 1)] : 0; });
+    }
+  }
+
+  /** 메인 멤버 보드: 주인공(skins/main) 얼굴 줄. 주인공이 없으면 지금 세션 직원들 */
+  renderMemberBoard() {
+    const live = [...this.walkers.values()].filter(w => !w.leaving);
+    const names = mainSkins(this.skins).map(fileKey);
+    const rows: Walker[] = names.length
+      ? names.map(n => live.find(w => !w.npc && w.lookKey === `main:${n}`) || live.find(w => w.mainNpc && w.lookKey === `main:${n}`)).filter((w): w is Walker => !!w)
+      : live.filter(w => !w.npc && !w.junior);
+    const list: Member[] = rows.map(w => {
+      const se = w.npc ? null : w.session;
+      let state: Member["state"] = "rest", text = "자리에서 대기";
+      if (se) {
+        if (se.state === "waiting") { state = "wait"; text = "확인이 필요해요"; }
+        else if (se.state === "working") { state = "work"; text = friendly(se).split(":")[0]; }
+        else if (se.activity === "done" && Date.now() - w.doneAt < 90000) { state = "done"; text = "방금 끝냈어요"; }
+        else { state = "rest"; text = se.activity === "sleep" ? "꾸벅꾸벅 조는 중" : "쉬는 중"; }
+      }
+      const name = (w as unknown as { skinName?: string }).skinName || w.name || "직원";
+      const src = this.textures.exists(w.key) ? this.textures.get(w.key).getSourceImage() as CanvasImageSource : null;
+      return { id: w.lookKey.startsWith("main:") ? w.lookKey : w.id, name, tex: src, state, text, onClick: () => this.clickWalker(w) };
+    });
+    renderMembers(list);
   }
 
   /** 말풍선 내용: 누가 · 어느 부서 · 지금 무엇을 */
@@ -1157,6 +1205,7 @@ ${st.costToday ? `$${st.costToday.toFixed(2)}` : "비용 -"}`);
   update(_t: number, dms: number) {
     // create() 는 비동기라 준비 전에도 매 프레임 불린다. 그때 오류가 나면 사파리는 그리기 루프가 멈춘다
     if (!this.map) return;
+    this.spreadOut();
     placeBubble();
     this.cat?.update(dms / 1000);
     for (const w of [...this.walkers.values()]) {

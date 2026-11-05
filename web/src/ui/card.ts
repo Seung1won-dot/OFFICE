@@ -1,3 +1,4 @@
+import { phraseDetail } from "../scenes/OfficeScene";   // 명령어 대신 읽기 쉬운 말
 // 사원증 카드: 직원을 클릭하면 뜬다 (별명·직급·입사일·오늘 끝낸 작업·최근 작업 5개)
 import { esc, ago } from "./bubble";
 
@@ -22,7 +23,7 @@ export async function showCard(info: CardInfo) {
         <dt>오늘 끝낸 작업</dt><dd><strong>${data.doneToday ?? 0}</strong>건</dd>
       </dl>
       <h4>최근 작업</h4>
-      <ol>${(data.recent || []).map(r => `<li><span>${esc(r.text)}</span><small>${ago(r.t)}</small></li>`).join("") || "<li><span>아직 기록이 없어요</span></li>"}</ol>
+      <ol>${(data.recent || []).map(r => `<li><span>${esc(phraseDetail(r.text))}</span><small>${ago(r.t)}</small></li>`).join("") || "<li><span>아직 기록이 없어요</span></li>"}</ol>
       <div class="foot">ID ${esc(info.id.slice(0, 8))} · 클릭하거나 Esc 로 닫기</div>
     </div>`;
   // 사원증 사진: 그 직원 스프라이트의 정면 프레임을 4배로
