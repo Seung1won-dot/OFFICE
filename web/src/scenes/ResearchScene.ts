@@ -11,6 +11,8 @@ const FH = 28;
 import { ensureGlowTexture, addSunlight, addNight, lightFromMap, addRugs, addDeskProps, addLife, sign, glow, DEPTH } from "../gfx/ambience";
 import { showBubble, hideBubble, placeBubble, esc, ago } from "../ui/bubble";
 import { LAB_NICK } from "../ui/names";
+import { addOutdoor } from "../gfx/outdoor";
+import { loadSkins, pickSkin, makeSkinSheet, skinName, SkinSet } from "../gfx/skins";
 
 export interface ResearchProject {
   id: string; name: string; status: string; state: "working" | "quiet" | "sleep" | "done";
@@ -26,11 +28,14 @@ export function isPublicMode() { try { return localStorage.getItem("office.publi
 export class ResearchScene extends Phaser.Scene {
   data_: ResearchData | null = null;
   layoutKey = "";
+  skins: SkinSet | null | undefined = undefined;
   constructor() { super("research"); }
 
   async create() {
     (window as any).research = this;
     await fontReady;   // 픽셀 글꼴이 준비된 뒤 글씨를 그림
+    // 개인용 스킨: 1층이 이미 불러왔으면 그대로, 아니면 직접
+    if (this.skins === undefined) this.skins = (this.scene.get("office") as unknown as { skins?: SkinSet | null }).skins ?? await loadSkins();
     this.data_ = await this.fetchData();
     this.build();
     this.time.addEvent({ delay: 15000, loop: true, callback: () => this.refresh() });
@@ -83,6 +88,7 @@ export class ResearchScene extends Phaser.Scene {
     lightFromMap(this, map, rooms);
     addSunlight(this, map);
     addLife(this, map);
+    addOutdoor(this, map.widthInPixels, map.heightInPixels, null, 4747);   // 화면 남는 곳은 밝은 바깥 풍경
 
     // 라운지 간판 + 주간 로그 게시판
     sign(this, 1 * TILE + 3, 1 * TILE + 2, "B1 연구실", "#7fd1c7");
@@ -100,9 +106,9 @@ export class ResearchScene extends Phaser.Scene {
       if (!p) {   // 빈 연구실
         const r = rooms.find(rr => rr.key === `lab_${i}`)!;
         sign(this, r.x + 3, r.y + 2, "빈 연구실", "#7d6c60");
-        this.add.text(r.x + r.w / 2, r.y + r.h / 2 + 10, "새 프로젝트 자리", { fontFamily: MAP_FONT, fontSize: "7px", color: "#c9b8a4", stroke: "#2a1d1c", strokeThickness: 3 })
+        this.add.text(r.x + r.w / 2, r.y + r.h / 2 + 10, "새 프로젝트 자리", { fontFamily: MAP_FONT, fontSize: "7px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 })
           .setOrigin(0.5).setResolution(4).setDepth(DEPTH.sign);
-        this.add.rectangle(r.x, r.y, r.w, r.h, 0x120a10, 0.35).setOrigin(0).setDepth(DEPTH.night - 1);
+        this.add.rectangle(r.x, r.y, r.w, r.h, 0xfff8ec, 0.28).setOrigin(0).setDepth(DEPTH.night - 1);
       }
     }
     this.fit();
@@ -134,9 +140,12 @@ export class ResearchScene extends Phaser.Scene {
     const kind = p.state === "sleep" ? "lab_sofa" : p.state === "done" ? "lab_trophy" : "lab_seat";
     const spot = pois.find(q => q.name === `${kind}_${i}`)!;
     const stage = p.state === "done" ? 2 : 1;
-    const key = `labmon-${stage}-${hash(p.name)}`;
+    const skin = this.skins ? pickSkin(this.skins, `lab:${p.name}`) : null;
+    const key = `labmon-${stage}-${hash(p.name)}${skin ? "-skin" : ""}`;
     if (!this.textures.exists(key)) {
-      const tex = this.textures.addCanvas(key, makeMonsterSheet(monsterLook(p.name, "sprout", stage)))!;
+      let sheet: HTMLCanvasElement | null = null;
+      if (skin) try { sheet = makeSkinSheet(skin, stage, this.skins!.crop); } catch { /* 몬스터로 */ }
+      const tex = this.textures.addCanvas(key, sheet || makeMonsterSheet(monsterLook(p.name, "sprout", stage)))!;
       for (let rr = 0; rr < 3; rr++) for (let c = 0; c < MCOLS; c++) tex.add(rr * MCOLS + c, 0, c * MFW, rr * MFH, MFW, MFH);
     }
     const dirRow = DIR_ROW[(spot.dir === "left" ? "right" : spot.dir) as "down" | "up" | "right"];
@@ -144,6 +153,7 @@ export class ResearchScene extends Phaser.Scene {
     const spr = this.add.sprite(spot.tx * TILE + TILE / 2, spot.ty * TILE + TILE - 1, key, dirRow * MCOLS + (sit ? 4 : 0)).setOrigin(0.5, 31 / 32);
     spr.setDepth(10 + spr.y).setFlipX(spot.dir === "left");
     if (spot.pose === "lie") spr.setAngle(-90).setPosition(spr.x + 4, spr.y - 4);
+    if (skin && spot.pose === "stand") this.add.ellipse(spr.x, spr.y - 1, 16, 5, 0x2a2018, 0.22).setDepth(9 + spr.y);   // 스킨 그림 발밑 그림자
     if (p.state === "working") this.time.addEvent({ delay: 260, loop: true, callback: () => spr.setFrame(dirRow * MCOLS + (spr.frame.name === String(dirRow * MCOLS + 4) ? 5 : 4)) });   // 타자 치는 모션
     if (p.state === "done") {
       for (let k = 0; k < 3; k++) {
@@ -159,7 +169,7 @@ export class ResearchScene extends Phaser.Scene {
       this.tweens.add({ targets: t, y: t.y - 2, duration: 1200, yoyo: true, repeat: -1, ease: "Sine.inOut" });
     }
     // 연구원 이름표 (공개 모드에서도 가명이라 그대로 표시)
-    const who = LAB_NICK[p.state] + (this.data_!.projects.filter((q, k) => k < i && q.state === p.state).length + 1 > 1
+    const who = (skin && skinName(skin)) || LAB_NICK[p.state] + (this.data_!.projects.filter((q, k) => k < i && q.state === p.state).length + 1 > 1
       ? this.data_!.projects.filter((q, k) => k < i && q.state === p.state).length + 1 : "");
     const rankT = p.state === "done" ? "수석연구원" : "연구원";
     this.add.text(spr.x, spr.y + 1 + (spot.pose === "lie" ? -6 : 0), `${who} ${rankT}`, { fontFamily: MAP_FONT, fontSize: "7px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 })
@@ -180,10 +190,10 @@ export class ResearchScene extends Phaser.Scene {
     const map = (this as any).map as Phaser.Tilemaps.Tilemap | undefined;
     if (!map || !this.sys.isActive()) return;
     const W = map.widthInPixels, H = map.heightInPixels;
-    const sb = document.getElementById("stage")!.getBoundingClientRect(), box = { width: sb.width - 16, height: sb.height - 16 };
+    const sb = document.getElementById("stage")!.getBoundingClientRect(), box = { width: sb.width - 24, height: sb.height - 24 };
     let z = Math.min(box.width / W, box.height / H);
     z = Math.max(0.5, Math.floor(z * 8) / 8);   // 화면을 최대한 채우기 (1/8 단위)
-    this.scale.resize(Math.round(W * z), Math.round(H * z));
+    this.scale.resize(Math.floor(sb.width), Math.floor(sb.height));   // 남는 곳은 바깥 풍경
     this.cameras.main.setZoom(z).centerOn(W / 2, H / 2).setRoundPixels(true);
   }
 

@@ -27,29 +27,29 @@ export function buildResearchMap(count: number) {
       properties: [{ name: "label", type: "string", value: label }] });
 
   // ── 라운지 ──
-  carve(1, 1, RW - 2, LOUNGE_H - 1, G.OFFICE); face(1, RW - 2, 1); room("lounge", "B1 연구실 라운지", 1, 1, RW - 2, LOUNGE_H - 1);
+  carve(1, 1, RW - 2, LOUNGE_H - 1, G.WOOD);   // 라운지: 따뜻한 나무 바닥 face(1, RW - 2, 1); room("lounge", "B1 연구실 라운지", 1, 1, RW - 2, LOUNGE_H - 1);
   walls[idx(3, 1)] = G.ELEVATOR; walls[idx(4, 1)] = G.ELEVATOR;
-  for (const x of [12, 20, 36, 42]) walls[idx(x, 1)] = G.WINDOW;
+  for (const x of [8, 12, 16, 20, 34, 38, 42]) walls[idx(x, 1)] = G.WINDOW;   // 창 많이 → 볕 잘 드는 라운지
   for (let x = 27; x <= 30; x++) put(x, 2, G.STANDBOARD);          // 주간 로그 게시판 (글씨는 씬이 얹음)
   put(8, 4, G.SOFA); put(9, 4, G.SOFA); put(44, 4, G.COFFEE);
-  plant(1, 3); plant(RW - 2, 3); plant(16, 5); plant(38, 5);
+  plant(1, 3); plant(RW - 2, 3); plant(16, 5); plant(38, 5); plant(22, 5); plant(33, 3); plant(6, 5);
 
   // ── 프로젝트 방 ──
   for (let i = 0; i < n; i++) {
     const r = Math.floor(i / PER_ROW), c = i % PER_ROW;
     const x0 = c * ROOM_W + 1, x1 = Math.min(x0 + ROOM_W - 2, RW - 2), y0 = LOUNGE_H + r * ROOM_H;   // y0 = 위벽
-    carve(x0, y0 + 1, x1, y0 + ROOM_H - 1, G.LAB); face(x0, x1, y0 + 1);
+    carve(x0, y0 + 1, x1, y0 + ROOM_H - 1, [G.CAFE, G.BEIGE, G.LOBBY][i % 3]);   // 방마다 밝은 바닥 face(x0, x1, y0 + 1);
     room(`lab_${i}`, "", x0, y0 + 1, x1, y0 + ROOM_H - 1);
     // 문 (라운지/위 방과 연결된 느낌만)
     for (const dx of [6, 7]) { walls[idx(x0 + dx, y0)] = 0; walls[idx(x0 + dx, y0 + 1)] = 0; floor[idx(x0 + dx, y0)] = G.DOOR; floor[idx(x0 + dx, y0 + 1)] = G.DOOR_FACE; }
-    walls[idx(x0 + 2, y0 + 1)] = G.WINDOW; walls[idx(x0 + 11, y0 + 1)] = G.WHITEBOARD;
+    walls[idx(x0 + 2, y0 + 1)] = G.WINDOW; walls[idx(x0 + 4, y0 + 1)] = G.WINDOW; walls[idx(x0 + 11, y0 + 1)] = G.WHITEBOARD; walls[idx(x0 + 14, y0 + 1)] = G.WINDOW;
     // 책장 · 책상 · 소파 · 트로피 · 화분
     for (const dx of [0, 1, 2]) { put(x0 + dx, y0 + 2, G.SHELF); }
     put(x0 + 7, y0 + 5, G.DESK_UP); put(x0 + 8, y0 + 5, G.DESK_UP);
     put(x0 + 7, y0 + 6, G.CHAIR_UP); poi(`lab_seat_${i}`, x0 + 7, y0 + 6, "up", "sit");
     put(x0 + 11, y0 + 7, G.SOFA); put(x0 + 12, y0 + 7, G.SOFA); poi(`lab_sofa_${i}`, x0 + 11, y0 + 7, "down", "lie");
     put(x0 + 12, y0 + 3, G.TROPHY); poi(`lab_trophy_${i}`, x0 + 11, y0 + 4, "right", "stand");
-    plant(x0, y0 + 7); put(x0 + 3, y0 + 7, G.LAMP);
+    plant(x0, y0 + 7); plant(x0 + 14, y0 + 4); put(x0 + 3, y0 + 7, G.LAMP);
   }
   const collision = new Array<number>(N).fill(0);
   for (let i = 0; i < N; i++) if (walls[i] || BLOCKING.has(furn[i])) collision[i] = 1;
