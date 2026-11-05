@@ -139,12 +139,14 @@ function summarize(file) {
       }
     } else if (o.type === "user") {
       const c = o.message?.content;
-      if (typeof c === "string") { if (!c.startsWith("<")) last = { kind: "prompt", text: c }; }
+      // 내가 Esc 로 멈춘 기록("[Request interrupted by user…]")은 새 요청이 아니라 "멈춤"
+      const said = (text) => /^\[Request interrupted/.test(text) ? { kind: "stop" } : { kind: "prompt", text };
+      if (typeof c === "string") { if (!c.startsWith("<")) last = said(c); }
       else if (Array.isArray(c)) {
         let res = false;
         for (const b of c) {
           if (b.type === "tool_result") { res = true; pending.delete(b.tool_use_id); errAt = b.is_error ? Date.parse(o.timestamp) || Date.now() : null; }
-          else if (b.type === "text" && !b.text.startsWith("<")) last = { kind: "prompt", text: b.text };
+          else if (b.type === "text" && !b.text.startsWith("<")) last = said(b.text);
         }
         if (res && last?.kind === "tool") last = { ...last, kind: "toolDone" };
       }
@@ -159,6 +161,8 @@ function summarize(file) {
     state = ageSec > 90 && activity !== "run" ? "waiting" : "working";   // 오래 멈춘 도구 = 권한 승인 대기일 가능성
     if (/AskUserQuestion/.test(lastTool)) state = "waiting";
     detail = `${shortTool(lastTool)} ${describeInput(last.input)}`.trim();
+  } else if (last?.kind === "stop") {
+    activity = "stop"; state = "idle"; detail = "내가 멈춤";   // 완료 축하 없이 쉬러 감
   } else if (last?.kind === "prompt" || last?.kind === "toolDone" || last?.kind === "thinking") {
     activity = "think"; state = ageSec > 300 ? "idle" : "working";
     detail = last.kind === "prompt" ? "요청 받음: " + last.text.slice(0, 40) : "생각 중…";

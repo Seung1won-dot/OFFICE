@@ -2,14 +2,15 @@ import Phaser from "phaser";
 import { MAP_FONT, fontReady } from "../ui/font";
 import EasyStar from "easystarjs";
 import { buildDefaultMap, TILE, G } from "../map/defaultMap";
-import { makeTilesetCanvas } from "../gfx/tileset";
+import { makeTilesetCanvas, extrudeTiles, TILE_MARGIN, TILE_SPACING } from "../gfx/tileset";
 import { DIR_ROW, Dir, hash, Team } from "../gfx/people";
 import { MW as MFW, MH as MFH, MCOLS, monsterLook, makeMonsterSheet, Species, Stage } from "../gfx/monsters";
-import { addOutdoor } from "../gfx/outdoor";
+import { addOutdoor, OutdoorGeo } from "../gfx/outdoor";
+import { addOutdoorLife } from "../gfx/outdoorLife";
 import { describeCommand } from "../ui/commands";
 import { renderMembers, hideMembers, membersHeight, onMembersResize, Member } from "../ui/members";
 import { ensureEmotes, emoteFrame, Emote } from "../gfx/emotes";
-import { loadSkins, pickSkin, makeSkinSheet, skinName, SkinSet, mainSkins, fileKey } from "../gfx/skins";
+import { loadSkins, pickSkin, makeSkinSheet, skinName, SkinSet, mainSkins, otherSkins, fileKey } from "../gfx/skins";
 
 /** 직급 → 진화 단계: 인턴=알, 사원·대리=기본, 과장 이상=진화 */
 export const stageOf = (rankIndex: number): Stage => (rankIndex <= 0 ? 0 : rankIndex <= 2 ? 1 : 2);
@@ -22,14 +23,25 @@ import { Speech, SpeechKind, twoLines } from "../gfx/speech";
 import { chime, done as doneSound, notify, flash, setTypingLevel, settings } from "../ui/alerts";
 import { showCard } from "../ui/card";
 import { makeCatSheet, CAT_W, CAT_H } from "../gfx/cat";
-import { rankOf, ROLE, NICK } from "../ui/names";
+import { rankOf, levelOf, ROLE, NICK } from "../ui/names";
 
 export interface Poi { name: string; kind: string; tx: number; ty: number; dir: Dir; pose: "stand" | "sit" | "lie" }
+/** 걷는 길의 한 점 (칸 좌표, 건물 밖은 소수). mark: out = 문을 나섬 · in = 문으로 들어옴 · fade = 사라지기 시작 · end = 화면 밖 도착 */
+type Step = { x: number; y: number; mark?: "out" | "in" | "fade" | "end" };
+/** 정원 벤치 자리: 자리 + 문 앞에서 거기까지 가는 길 */
+type GardenSeat = { poi: Poi; route: Step[]; feet: { x: number; y: number } };
+const OUT_AFTER_MS = 2 * 3600 * 1000;   // 2시간 넘게 쉬면 퇴근해서 정원으로 (수면실이 꽉 차면 그 전에도)
 export interface RoomRect { key: string; label: string; x: number; y: number; w: number; h: number }
 interface Session {
   id: string; title: string; project: string; state: string; activity: string; tool?: string; toolFull?: string;
   detail?: string; activeSubagents?: number; updated?: number; toolCount?: number; error?: boolean; repo?: string | null;
   contextLeft?: number | null; tokensToday?: number; tokens5h?: number;
+}
+/** 지금 쉬는 모습 한마디 (멤버 보드·말풍선) */
+function restText(s: Session, zone: string) {
+  if (s.activity === "stop") return "멈춤 (내가 중단)";
+  if (zone === "out") return "정원에서 꾸벅꾸벅";
+  return s.activity === "sleep" ? "꾸벅꾸벅 조는 중" : "쉬는 중";
 }
 interface Config {
   tripKeywords: Record<string, string>; zones: Record<string, string>;
@@ -54,6 +66,7 @@ export const ZONE_ORDER = ["dev", "lib", "srv", "research", "think", "ceo", "caf
 export const ZONE_NAME: Record<string, string> = {
   think: "생각실", lib: "자료실", dev: "코딩실", srv: "터미널실", research: "조사실", meet: "회의실",
   gh: "GitHub 출장", plan: "Notion 출장", obsidian: "Obsidian 출장", ceo: "결재대기", nap: "수면실", cafe: "탕비실", standup: "스탠드업",
+  out: "정원",
 };
 // 이동하지 않고 자리에서 띄우는 머리 위 아이콘
 const ZONE_ICON: Record<string, string> = {
@@ -96,6 +109,7 @@ function friendly(s: Session) {
   const detail = (s.detail || "").trim(), tool = s.tool || detail.split(" ")[0] || "";
   const arg = detail.startsWith(tool) ? detail.slice(tool.length).trim() : "";
   const a = arg ? `: ${arg.length > 40 ? arg.slice(0, 39) + "…" : arg}` : "";
+  if (/\[Request interrupted/.test(detail) || s.activity === "stop") return "멈춤 (내가 중단)";
   if (s.activity === "think" || !tool) return detail.startsWith("요청 받음") ? detail : "곰곰이 생각하는 중";
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool)) return `파일 고치는 중${a}`;
   if (/^Read$/.test(tool)) return `파일 읽는 중${a}`;
@@ -141,7 +155,9 @@ class Walker {
   base: { text: string; kind: SpeechKind } = { text: "", kind: "plain" };
   sayText = ""; sayUntil = 0; inChat = false; sayKind: SpeechKind = "chat";
   prevState = "";
-  path: { x: number; y: number }[] = [];
+  path: Step[] = [];
+  // 건물 밖: outside = 문 밖에 있음, trail = 문을 나선 뒤 지나온 점들(되돌아올 때 거꾸로), after = 길 끝에서 이어 할 일, gone = 화면 밖으로 퇴근 끝
+  outside = false; trail: Step[] = []; after: (() => void) | null = null; gone = false;
   tx: number; ty: number;
   dir: Dir = "down";
   target: Poi | null = null;
@@ -179,6 +195,8 @@ class Walker {
   wx = 0; wy = 0;
   place(x: number, y: number) { this.wx = x; this.wy = y; this.sprite.setPosition(Math.round(x), Math.round(y) + this.oy); }
   goTo(poi: Poi | null, zone: string) {
+    if (this.outside) { this.scene.comeIn(this, poi, zone); return; }   // 정원에 있으면 문으로 들어와서
+    this.after = null;
     this.zone = zone;
     this.scene.release(this);
     if (!poi) return;
@@ -189,6 +207,14 @@ class Walker {
       this.path = p ? p.slice(1) : [];
       if (!this.path.length) this.arrivedAt = Date.now();
     });
+  }
+  /** 길의 한 점을 지날 때: 문을 나서고 들어오는 것 기록, 퇴근길 끝에서 사라지기 */
+  passed(n: Step) {
+    if (n.mark === "out") { this.outside = true; this.trail = []; }
+    else if (n.mark === "in") { this.outside = false; this.trail = []; }
+    else if (this.outside) this.trail.push({ x: n.x, y: n.y });
+    if (n.mark === "fade") this.scene.tweens.add({ targets: this.sprite, alpha: 0, duration: 1600 });
+    if (n.mark === "end") this.gone = true;
   }
   /** 계속 떠 있는 말풍선 (하는 일 / 확인 필요 / 작은 표시) */
   setIcon(text: string, kind: boolean | "work" | SpeechKind = false) {
@@ -214,7 +240,8 @@ class Walker {
     this.ring.setPosition(s.x, s.y - 1).setDepth(9 + s.y).setStrokeStyle(1.5, c, active ? pulse : 0.5).setFillStyle(c, active ? 0.12 + 0.12 * pulse : 0.06)
       .setScale(this.junior ? 0.75 : 1);
     const lit = this.session?.state === "working" ? 0.16 : this.session?.state === "waiting" ? 0.14 : 0;   // 낮 오피스라 은은하게 (캐릭터 색이 바래지 않게)
-    this.light!.setPosition(s.x, s.y - 8).setAlpha(lit * (0.8 + 0.2 * pulse)).setTint(c);
+    this.light!.setPosition(s.x, s.y - 8).setAlpha(lit * (0.8 + 0.2 * pulse) * s.alpha).setTint(c);
+    this.ring.setAlpha(s.alpha);   // 출근·퇴근할 때 캐릭터와 같이 나타나고 사라짐
   }
   update(dt: number) {
     const s = this.sprite;
@@ -231,6 +258,7 @@ class Walker {
       this.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
       if (d <= step) {
         this.place(gx, gy); this.tx = n.x; this.ty = n.y; this.path.shift();
+        this.passed(n);
         if (!this.path.length) { this.arrivedAt = Date.now(); this.arrivedAtT = this.scene.time.now; this.wasWalking = false; this.scene.arrived(this); }
       } else this.place(this.wx + dx / d * step, this.wy + dy / d * step);
       s.play(`${this.key}-walk-${this.dir === "left" ? "right" : this.dir}`, true);
@@ -307,6 +335,7 @@ class Walker {
       if (se.state === "waiting") e = "alert";
       else if (se.state === "working" && se.activity === "think") e = "think";
       else if (se.activity === "done" && Date.now() - this.doneAt < 90000) e = "spark";
+      else if (this.zone === "out" && this.outside && !this.walking) e = "zzz";   // 정원 벤치에서 꾸벅꾸벅
     }
     const key = emoteFrame(e, now);
     if (!key) { this.emote?.setVisible(false); return; }
@@ -363,11 +392,11 @@ export class OfficeScene extends Phaser.Scene {
     if (source.startsWith("Tiled")) tileImg = await new Promise<HTMLImageElement | null>(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "/maps/office-tiles.png"; });
     const tpMap = this.cache.json.get("tp-map");
     const tpImg = this.textures.exists("tp-tiles") ? this.textures.get("tp-tiles").getSourceImage() as HTMLImageElement : null;
-    if (tileImg) this.textures.addImage("office-tiles", tileImg);
-    else this.textures.addCanvas("office-tiles", makeTilesetCanvas(tpImg && tpMap ? { img: tpImg, index: tpMap } : null));
+    // 이음새 줄 방지: 타일 가장자리를 1px 늘린 시트로 (B1 연구실도 같은 시트를 씀)
+    if (!this.textures.exists("office-tiles")) this.textures.addCanvas("office-tiles", extrudeTiles(tileImg ?? makeTilesetCanvas(tpImg && tpMap ? { img: tpImg, index: tpMap } : null)));
     this.cache.tilemap.add("office", { format: Phaser.Tilemaps.Formats.TILED_JSON, data });
     this.map = this.make.tilemap({ key: "office" });
-    const ts = this.map.addTilesetImage("office", "office-tiles")!;
+    const ts = this.map.addTilesetImage("office", "office-tiles", TILE, TILE, TILE_MARGIN, TILE_SPACING)!;
     this.map.createLayer("floor", ts)!.setDepth(0);
     this.map.createLayer("walls", ts)!.setDepth(1);
     this.map.createLayer("furniture", ts)!.setDepth(2);
@@ -382,7 +411,11 @@ export class OfficeScene extends Phaser.Scene {
       this.rooms.push({ key: o.name, label: prop(o, "label") || o.name, x: o.x!, y: o.y!, w: o.width!, h: o.height! });
     this.entrance = this.pois.find(p => p.name === "entrance")!;
     ensureEmotes(this);
-    addOutdoor(this, this.map.widthInPixels, this.map.heightInPixels, this.entrance);   // 건물 밖 풍경으로 빈 화면 채우기
+    // 건물 밖 풍경으로 빈 화면 채우기 + 계절 따라 움직이는 것들 + 정원 벤치·출퇴근 길
+    const outdoor = addOutdoor(this, this.map.widthInPixels, this.map.heightInPixels, this.entrance);
+    this.geo = outdoor.geo;
+    this.setupDoorRoutes();
+    addOutdoorLife(this, this.geo, outdoor.season, () => membersHeight() / (this.cameras.main.zoom || 1));
     // 분위기: 러그 · 책상 소품 · 조명 · 밤 · 작은 움직임
     ensureGlowTexture(this);
     addRugs(this, this.rooms, { dev: "#7d8ca6", gh: "#7f9478", plan: "#988898", research: "#a39a78", obsidian: "#9a9282", meet: "#8f94a8", think: "#8f94a8" });
@@ -456,9 +489,10 @@ export class OfficeScene extends Phaser.Scene {
     for (const [k, z] of Object.entries(this.cfg.zones)) if (!k.startsWith("_")) (when[z] ??= []).push(LABEL[k] || k);
     for (const [kw, z] of Object.entries(this.cfg.tripKeywords)) if (!kw.startsWith("_")) (when[z] ??= []).push(`${kw} 도구 출장`);
     (when.standup ??= []).push(`매일 ${this.cfg.standup.times.join(", ")}`);
-    const ORDER = ["think", "lib", "dev", "srv", "research", "meet", "gh", "plan", "obsidian", "ceo", "nap", "cafe", "standup"];
+    if (this.door) (when.out ??= []).push("2시간 넘게 쉼 (수면실이 꽉 차도) — 퇴근해서 정원 벤치");
+    const ORDER = ["think", "lib", "dev", "srv", "research", "meet", "gh", "plan", "obsidian", "ceo", "nap", "out", "cafe", "standup"].filter(z => z !== "out" || this.door);
     const COLOR: Record<string, string> = { ceo: "#e0b04a", meet: "#8fa3c8", lib: "#d39a5c", srv: "#5fd08a", nap: "#8d86c0", think: "#b48ae0",
-      dev: "#6c8cff", gh: "#3fb8a8", plan: "#c08ab0", research: "#6fbf8a", obsidian: "#a08ae0", standup: "#f0c060", cafe: "#e0a080" };
+      dev: "#6c8cff", gh: "#3fb8a8", plan: "#c08ab0", research: "#6fbf8a", obsidian: "#a08ae0", standup: "#f0c060", cafe: "#e0a080", out: "#86c060" };
     const el = document.getElementById("zones");
     if (!el) return;
     const html = ORDER.map(z => `<div class="z"><i style="background:${COLOR[z]}"></i><div><b>${ZONE_NAME[z]}</b><span>${[...new Set(when[z] || [])].join(" · ") || "-"}</span></div><em class="${count[z] ? "on" : ""}">${count[z] || 0}</em></div>`).join("");
@@ -620,10 +654,8 @@ export class OfficeScene extends Phaser.Scene {
       const w = this.spawn(`npc-${seq}`, `npc-${i}-${spec.kind}`, false, "", NPC_SPECIES[spec.kind] || "ember", nstage);
       w.npc = true; w.home = home; w.zone = "npc";
       w.sprite.setTint(0xcfc4b8).setAlpha(0.92);   // 실제 세션이 돋보이도록 살짝 바래게
-      if (first) {   // 처음 켰을 땐 이미 출근해 있음, 이후엔 입구에서 걸어 들어옴
-        w.place(home.tx * TILE + TILE / 2, home.ty * TILE + TILE - 1); w.tx = home.tx; w.ty = home.ty;
-        w.target = home; this.reserve(home, w); w.arrivedAt = Date.now();
-      } else w.goTo(home, "npc");
+      if (first) this.seatNow(w, home, "npc");   // 처음 켰을 땐 이미 출근해 있음, 이후엔 도로 쪽에서 걸어와 출근
+      else { this.reserve(home, w); w.zone = "npc"; this.arrive(w, () => w.goTo(home, "npc")); }
       w.nextAt = Date.now() + 15000 + Math.random() * 60000;
       w.tag.setVisible(false); w.tag.setAlpha(0);
       w.name = spec.nick; w.task = this.deskTask(w);
@@ -664,16 +696,51 @@ export class OfficeScene extends Phaser.Scene {
     return list[hash(w.id + Math.floor(Date.now() / 60000)) % list.length];
   }
 
-  /** 새 세션에게 줄 주인공: 같은 프로젝트가 전에 쓰던 아이 → 아무도 안 쓰는 아이 → (다 쓰는 중이면) 프로젝트 해시로 */
+  /** 새 세션에게 줄 모습: 같은 프로젝트가 전에 쓰던 주인공 → 아무도 안 쓰는 주인공 →
+   *  (주인공이 다 일하는 중이면) 아무도 안 쓰는 다른 그림. 같은 캐릭터가 둘이 되지 않게 */
   mainOf = new Map<string, string>();
   mainLook(s: Session): string | null {
     const names = mainSkins(this.skins).map(fileKey);
     if (!names.length) return null;
-    const used = new Set([...this.walkers.values()].filter(w => !w.npc && !w.leaving && w.lookKey.startsWith("main:")).map(w => w.lookKey.slice(5)));
+    const live = [...this.walkers.values()].filter(w => !w.npc && !w.leaving);
+    const used = new Set(live.filter(w => w.lookKey.startsWith("main:")).map(w => w.lookKey.slice(5)));
     const proj = s.project || s.id, prev = this.mainOf.get(proj);
-    const name = prev && !used.has(prev) ? prev : names.find(n => !used.has(n)) ?? names[hash(proj) % names.length];
-    this.mainOf.set(proj, name);
-    return `main:${name}`;
+    const name = prev && !used.has(prev) ? prev : names.find(n => !used.has(n));
+    if (name) { this.mainOf.set(proj, name); return `main:${name}`; }
+    // 다른 그림: 이름이 붙은 그림(숫자·밑줄 없는 파일 이름)부터, 아직 아무도 안 쓰는 것
+    const usedOther = new Set(live.filter(w => w.lookKey.startsWith("skin:")).map(w => w.lookKey.slice(5)));
+    const pool = otherSkins(this.skins).map(fileKey).filter(n => !n.startsWith("_"));
+    const named = pool.filter(n => !/[\d_]/.test(n)), rest = pool.filter(n => /[\d_]/.test(n));
+    for (const list of [named, rest]) {
+      if (!list.length) continue;
+      const start = hash(proj) % list.length;
+      for (let k = 0; k < list.length; k++) { const n = list[(start + k) % list.length]; if (!usedOther.has(n)) return `skin:${n}`; }
+    }
+    return null;
+  }
+  /** 사무실에 나와 있던 주인공이 새 세션을 맡음 (같은 아이가 나갔다 다시 들어오지 않게) */
+  adopt(o: Walker, id: string): Walker {
+    for (const c of this.convs) if (c.a === o || c.b === o) { c.a.inChat = false; c.b.inChat = false; }
+    this.convs = this.convs.filter(c => c.a !== o && c.b !== o);
+    this.release(o); this.walkers.delete(o.id);
+    o.id = id; this.walkers.set(id, o);
+    o.npc = false; o.mainNpc = false; o.home = null; o.task = ""; o.rank = -1; o.prevState = "";
+    o.stage = -1 as unknown as Stage;   // 바로 다음 evolve() 가 직급에 맞는 모습으로 조용히 바꿈 (진화 연출 없이)
+    o.sprite.clearTint().setAlpha(1); o.tag.setAlpha(1);
+    return o;
+  }
+  /** 끝난 세션의 주인공은 퇴근 대신 배경 직원으로 사무실에 남음 (주인공은 늘 화면에) */
+  retire(w: Walker) {
+    this.release(w); this.walkers.delete(w.id);
+    w.id = `npc-${this.npcSeq++}`; this.walkers.set(w.id, w);
+    w.npc = true; w.mainNpc = true; w.session = null; w.want = ""; w.manualUntil = 0; w.inChat = false;
+    w.ring?.destroy(); w.light?.destroy(); w.ring = undefined; w.light = undefined;
+    w.setIcon(""); w.tag.setAlpha(0);
+    const KINDS = ["seat_dev", "repo_desk", "plan_desk", "research_desk", "obsidian_desk"];
+    const seats = this.pois.filter(p => KINDS.includes(p.kind) && !this.reservedBy.get(p.name));
+    w.home = seats.length ? seats[hash(w.lookKey) % seats.length] : null;
+    w.task = this.deskTask(w); w.nextAt = Date.now() + 20000 + Math.random() * 30000;
+    if (w.home) w.goTo(w.home, "npc"); else this.leave(w);
   }
   /** 세션에 안 쓰인 주인공은 배경 직원으로 늘 나와 있음 (바래지 않게, 퇴근 없음) */
   mainResidents(first: boolean) {
@@ -688,19 +755,135 @@ export class OfficeScene extends Phaser.Scene {
       const home = seats[hash(n) % seats.length];
       const w = this.spawn(`npc-${this.npcSeq++}`, `main:${n}`, false, "", NPC_SPECIES[home.kind] || "ember", 1);
       w.npc = true; w.mainNpc = true; w.home = home; w.zone = "npc";
-      if (first) { w.place(home.tx * TILE + TILE / 2, home.ty * TILE + TILE - 1); w.tx = home.tx; w.ty = home.ty; w.target = home; this.reserve(home, w); w.arrivedAt = Date.now(); }
-      else w.goTo(home, "npc");
+      if (first) this.seatNow(w, home, "npc");
+      else { this.reserve(home, w); this.arrive(w, () => w.goTo(home, "npc")); }
       w.nextAt = Date.now() + 15000 + Math.random() * 60000;
       w.tag.setVisible(false); w.tag.setAlpha(0);
       w.name = n; w.task = this.deskTask(w);
     }
   }
 
+  // ════════════ 출근 · 퇴근 · 정원 ════════════
+  // 문(동쪽 벽) 밖은 타일 격자가 없어서 미리 정한 길(보도·산책로)을 따라 걷는다.
+  // 새 직원은 도로 쪽에서 걸어와 문으로 출근하고, 끝난 세션은 문을 나서 산책로로 퇴근하며 사라진다.
+  // 오래 쉬는 세션은 화면에 보이는 정원 벤치로 나가서 꾸벅꾸벅 (주인공이 화면에서 사라지지 않게).
+  geo!: OutdoorGeo;
+  door: { tile: Step; D: Step; exit: Step[]; entry: Step[] } | null = null;
+  garden: GardenSeat[] = [];
+  polledOnce = false;
+
+  setupDoorRoutes() {
+    const e = this.entrance, g = this.geo, W = this.map.widthInPixels, H = this.map.heightInPixels;
+    const col = this.map.getLayer("collision")!.data;
+    const tile = { x: e.tx + 1, y: e.ty };
+    // 동쪽 벽에 난 문일 때만 (다른 맵이면 예전처럼 입구에서 나타나고 사라짐)
+    if (!g.door || tile.x !== this.map.width - 1 || (col[tile.y]?.[tile.x]?.index ?? 1) > 0) return;
+    const N = (x: number, y: number, mark?: Step["mark"]): Step => ({ x: (x - TILE / 2) / TILE, y: (y - (TILE - 1)) / TILE, mark });
+    const fy = e.ty * TILE + TILE - 1, walkX = g.door.walkX, curbY = g.roadY0 - 14, sideY = H + 12;
+    this.door = {
+      tile, D: N(W + 10, fy, "out"),
+      exit: [N(walkX, fy, "fade"), N(walkX, curbY), N(walkX + 30, curbY, "end")],
+      entry: [N(walkX, curbY), N(walkX, fy), N(W + 10, fy), { ...tile, mark: "in" }, { x: e.tx, y: e.ty }],
+    };
+    g.benches.forEach((b, i) => [b.x + 9, b.x + b.w - 9].forEach((sx, k) => {
+      const sy = b.y + 6;   // 앉는 판 앞쪽에 발
+      const mid: [number, number][] = b.side === "bottom" ? [[W + 10, sideY], [sx, sideY]]
+        : b.side === "left" ? [[W + 10, sideY], [-10, sideY], [-10, sy]] : [[walkX, fy], [walkX, sy]];
+      const route = [...mid.map(([x, y]) => N(x, y)), N(sx, sy)], seat = route[route.length - 1];
+      this.garden.push({ poi: { name: `garden_${i}_${k}`, kind: "garden", tx: seat.x, ty: seat.y, dir: "down", pose: "sit" }, route, feet: { x: sx, y: sy } });
+    }));
+  }
+  /** 화면에 캐릭터와 이름표까지 다 보이는 자리인지 (위쪽 멤버 보드, 왼쪽 아래 로그 창에 가리지 않게) */
+  seen(p: { x: number; y: number }) {
+    const cam = this.cameras.main, z = cam.zoom || 1, w = cam.width / z, h = cam.height / z;
+    const left = cam.scrollX + cam.width / 2 - w / 2, top = cam.scrollY + cam.height / 2 - h / 2;
+    const x0 = p.x - 12, x1 = p.x + 12, y0 = p.y - 30, y1 = p.y + 12;
+    if (x0 < left || x1 > left + w || y0 < top + membersHeight() / z || y1 > top + h) return false;
+    const lg = document.getElementById("log")?.getBoundingClientRect(), cv = this.game.canvas.getBoundingClientRect();
+    if (lg && lg.width) {
+      const lx0 = left + (lg.left - cv.left) / z, lx1 = left + (lg.right - cv.left) / z, ly0 = top + (lg.top - cv.top) / z, ly1 = top + (lg.bottom - cv.top) / z;
+      if (x1 > lx0 && x0 < lx1 && y1 > ly0 && y0 < ly1) return false;
+    }
+    return true;
+  }
+  /** 비어 있고 화면에 보이는 정원 자리 (문에서 가까운 벤치부터 둘씩) */
+  freeGarden(w: Walker): GardenSeat | null {
+    const len = (g: GardenSeat) => g.route.reduce((a, s, i) => i ? a + Math.abs(s.x - g.route[i - 1].x) + Math.abs(s.y - g.route[i - 1].y) : 0, 0);
+    return this.garden.filter(g => { const r = this.reservedBy.get(g.poi.name); return (!r || r === w.id) && this.seen(g.feet); })
+      .sort((a, b) => len(a) - len(b))[0] ?? null;
+  }
+  /** 정원 벤치로: 안에 있으면 문까지 걸어가서 나감, 이미 밖이면 문 앞을 거쳐 다른 자리로 */
+  goGarden(w: Walker, g: GardenSeat) {
+    const d = this.door!, e = this.entrance;
+    this.release(w); this.reserve(g.poi, w);
+    w.zone = "out"; w.target = g.poi; w.arrivedAt = Number.POSITIVE_INFINITY; w.after = null;
+    const route = g.route.map(s => ({ ...s }));
+    if (w.outside) { w.path = [...w.trail.slice().reverse(), { ...d.D }, ...route]; return; }
+    this.findPath(w.tx, w.ty, e.tx, e.ty, (p) => { w.path = [...(p ? p.slice(1) : []), { ...d.tile }, { ...d.D }, ...route]; });
+  }
+  /** 정원에서 안으로: 지나온 길을 거꾸로 → 문 → 입구에서 원래 가려던 자리로 */
+  comeIn(w: Walker, poi: Poi | null, zone: string) {
+    const d = this.door!, e = this.entrance;
+    this.release(w); if (poi) this.reserve(poi, w);
+    w.zone = zone; w.target = null; w.arrivedAt = Number.POSITIVE_INFINITY;
+    w.path = [...w.trail.slice().reverse(), { ...d.D, mark: undefined }, { ...d.tile, mark: "in" }, { x: e.tx, y: e.ty }];
+    w.after = () => w.goTo(poi, zone);
+  }
+  /** 출근: 도로 쪽에서 나타나 산책로를 따라 문으로 들어온 뒤 then() */
+  arrive(w: Walker, then: () => void) {
+    const d = this.door;
+    if (!d) { then(); return; }
+    const [start, ...rest] = d.entry;
+    w.place(start.x * TILE + TILE / 2, start.y * TILE + TILE - 1); w.tx = start.x; w.ty = start.y;
+    w.outside = true; w.trail = []; w.path = rest.map(s => ({ ...s })); w.after = then;
+    const a = w.sprite.alpha;
+    w.sprite.setAlpha(0); this.tweens.add({ targets: w.sprite, alpha: a, duration: 1200 });
+  }
+  /** 처음 켰을 때: 걸어오지 않고 이미 그 자리에 있음 */
+  seatNow(w: Walker, poi: Poi, zone: string, route?: Step[]) {
+    this.release(w); this.reserve(poi, w);
+    w.zone = zone; w.target = poi; w.path = []; w.after = null; w.arrivedAt = Date.now();
+    w.place(poi.tx * TILE + TILE / 2, poi.ty * TILE + TILE - 1); w.tx = poi.tx; w.ty = poi.ty;
+    if (route) { w.outside = true; w.trail = route.map(s => ({ x: s.x, y: s.y })); }
+  }
+  /** 구역으로 보내기. how: walk = 걸어감 · now = 이미 그 자리 · arrive = 밖에서 출근해서 감 */
+  dispatch(w: Walker, zone: string, how: "walk" | "now" | "arrive") {
+    if (zone === "out") {
+      const g = this.door && this.freeGarden(w);
+      if (g) {
+        if (how === "now") return this.seatNow(w, g.poi, "out", g.route);
+        if (how === "arrive") { this.reserve(g.poi, w); w.zone = "out"; return this.arrive(w, () => this.goGarden(w, g)); }
+        return this.goGarden(w, g);
+      }
+      zone = "nap";   // 정원이 화면에 안 보이면 수면실로
+    }
+    const poi = this.freePoi(ZONE_POI[zone], undefined, w);
+    if (how === "now" && poi) return this.seatNow(w, poi, zone);
+    if (how === "arrive") { if (poi) this.reserve(poi, w); w.zone = zone; return this.arrive(w, () => w.goTo(poi, zone)); }
+    w.goTo(poi, zone);
+  }
+  /** 오래 쉬는 세션: 2시간 넘었거나 수면실 침대가 꽉 차면 정원 (정원이 화면에 보일 때만) */
+  restZone(w: Walker, s: Session, zone: string) {
+    if (s.activity !== "sleep" || !this.door) return zone;
+    if (w.zone === "out") return "out";
+    const idle = Date.now() - (s.updated || Date.now());
+    const bedFree = this.pois.some(p => p.kind === "bed" && (!this.reservedBy.get(p.name) || this.reservedBy.get(p.name) === w.id));
+    return (idle > OUT_AFTER_MS || (!bedFree && w.zone !== "nap")) && this.freeGarden(w) ? "out" : zone;
+  }
+
   leave(w: Walker) {
     if (w.leaving) return;
-    w.leaving = true; this.release(w); w.setIcon("");
-    w.target = this.entrance;
-    this.findPath(w.tx, w.ty, this.entrance.tx, this.entrance.ty, (p) => { w.path = p ? p.slice(1) : []; });
+    w.leaving = true; this.release(w); w.setIcon(""); w.after = null;
+    const d = this.door, e = this.entrance;
+    if (!d) {   // 문 밖 길이 없는 맵: 입구까지 가서 사라짐
+      w.target = e;
+      this.findPath(w.tx, w.ty, e.tx, e.ty, (p) => { w.path = p ? p.slice(1) : []; });
+      return;
+    }
+    const exit = d.exit.map(s => ({ ...s }));
+    w.target = null;
+    if (w.outside) { w.path = [...w.trail.slice().reverse(), { ...d.D }, ...exit]; return; }
+    this.findPath(w.tx, w.ty, e.tx, e.ty, (p) => { w.path = [...(p ? p.slice(1) : []), { ...d.tile }, { ...d.D }, ...exit]; });
   }
 
   sendFirstTo(zone: string) {
@@ -717,17 +900,19 @@ export class OfficeScene extends Phaser.Scene {
     let newWait: { w: Walker; s: Session } | null = null;
     const now = Date.now(), { minStaySec, quickToolSec } = this.cfg.debounce;
     const alive = new Set<string>();
+    const first = !this.polledOnce; this.polledOnce = true;   // 처음 켰을 땐 다들 이미 자기 자리에 있음 (한꺼번에 줄지어 걸어오지 않게)
 
     for (const s of sessions) {
       alive.add(s.id);
-      const zone = this.zoneOf(s);
       let w = this.walkers.get(s.id);
-      if (!w) {   // 새 세션: 입구에서 바로 출근
+      if (!w) {   // 새 세션: 그 주인공이 사무실에 있으면 그 아이가 바로 일을 맡고, 아니면 도로 쪽에서 걸어와 문으로 출근
         const look = this.mainLook(s);
-        if (look) for (const o of this.walkers.values()) if (o.mainNpc && o.lookKey === look && !o.leaving) { o.task = "자리 비켜 주는 중"; this.leave(o); }
-        w = this.spawn(s.id, look || s.project || s.id, false, "", "ember", stageOf(rankOf(s.toolCount).index));
-        w.goTo(this.freePoi(ZONE_POI[zone], undefined, w), zone);
+        const resident = look ? [...this.walkers.values()].find(o => o.mainNpc && o.lookKey === look && !o.leaving) : undefined;
+        w = resident ? this.adopt(resident, s.id) : this.spawn(s.id, look || s.project || s.id, false, "", "ember", stageOf(rankOf(s.toolCount).index));
+        w.session = s;
+        this.dispatch(w, this.restZone(w, s, this.zoneOf(s)), resident ? "walk" : first ? "now" : "arrive");
       }
+      const zone = this.restZone(w, s, this.zoneOf(s));
       w.session = s;
       // 상태 전환: 새로 "확인 필요" → 알림 / 작업 → 쉬는 중 = 완료 축하
       if (w.prevState && w.prevState !== "waiting" && s.state === "waiting") newWait = { w, s };
@@ -746,12 +931,15 @@ export class OfficeScene extends Phaser.Scene {
         if (w.want !== zone) { w.want = zone; w.wantSince = now; }
         const stable = now - w.wantSince >= quickToolSec * 1000;
         const stayed = now - w.arrivedAt >= minStaySec * 1000;
-        if (stable && stayed && !w.walking) { w.goTo(this.freePoi(ZONE_POI[zone], undefined, w), zone); w.want = ""; }
+        if (stable && stayed && !w.walking) { this.dispatch(w, zone, "walk"); w.want = ""; }
       }
+      // 정원 자리가 창 크기가 바뀌어 화면 밖이 됐으면 보이는 자리로 (없으면 수면실)
+      if (w.zone === "out" && w.outside && !w.walking && w.target && !this.seen(this.garden.find(g => g.poi === w!.target)?.feet ?? { x: -1e4, y: -1e4 })) this.dispatch(w, "out", "walk");
       // 머리 위 아이콘: 대기 중이면 "!", 이동 보류 중이면 하려는 일의 아이콘
       if (s.state === "waiting" || (w.zone === "ceo" && !w.walking)) w.setIcon("! 확인이 필요해요", "wait");
       else if (s.state === "working") w.setIcon(twoLines(friendly(s)), "work");
-      else if (s.activity === "sleep" || w.zone === "nap") w.setIcon("Zzz…", "plain");
+      else if (w.zone === "out") w.setIcon("");   // 정원에선 말풍선 대신 작은 z
+      else if (s.activity === "sleep" || w.zone === "nap") w.setIcon(w.walking ? "" : "Zzz…", "plain");
       else if (w.want) w.setIcon(ZONE_ICON[w.want] || "");
       else w.setIcon("");
       // 탕비실에서 쉬는 세션은 가끔 혼잣말
@@ -778,8 +966,10 @@ export class OfficeScene extends Phaser.Scene {
       });
       for (const j of juniors) alive.add(j.id);
     }
-    // 끝난 세션·서브에이전트는 입구로 퇴근
-    for (const w of this.walkers.values()) if (!w.npc && !alive.has(w.id) && !w.leaving) this.leave(w);
+    // 끝난 세션·서브에이전트는 문을 나서 퇴근 (주인공은 배경 직원으로 남음)
+    for (const w of [...this.walkers.values()]) if (!w.npc && !alive.has(w.id) && !w.leaving) {
+      if (!w.junior && w.lookKey.startsWith("main:")) this.retire(w); else this.leave(w);
+    }
     this.ambient();
     for (const w of this.walkers.values()) if (!w.npc && !w.junior && !w.leaving) this.collab(w);
     this.chats();
@@ -816,9 +1006,9 @@ export class OfficeScene extends Phaser.Scene {
   renderMemberBoard() {
     const live = [...this.walkers.values()].filter(w => !w.leaving);
     const names = mainSkins(this.skins).map(fileKey);
-    const rows: Walker[] = names.length
-      ? names.map(n => live.find(w => !w.npc && w.lookKey === `main:${n}`) || live.find(w => w.mainNpc && w.lookKey === `main:${n}`)).filter((w): w is Walker => !!w)
-      : live.filter(w => !w.npc && !w.junior);
+    // 주인공 줄 + (주인공이 다 일하는 중이라 다른 그림을 받은) 나머지 세션도 뒤에 — 확인이 필요한 세션을 놓치지 않게
+    const mains = names.map(n => live.find(w => !w.npc && w.lookKey === `main:${n}`) || live.find(w => w.mainNpc && w.lookKey === `main:${n}`)).filter((w): w is Walker => !!w);
+    const rows: Walker[] = [...mains, ...live.filter(w => !w.npc && !w.junior && !mains.includes(w))];
     const list: Member[] = rows.map(w => {
       const se = w.npc ? null : w.session;
       let state: Member["state"] = "rest", text = "자리에서 대기";
@@ -826,11 +1016,14 @@ export class OfficeScene extends Phaser.Scene {
         if (se.state === "waiting") { state = "wait"; text = "확인이 필요해요"; }
         else if (se.state === "working") { state = "work"; text = friendly(se).split(":")[0]; }
         else if (se.activity === "done" && Date.now() - w.doneAt < 90000) { state = "done"; text = "방금 끝냈어요"; }
-        else { state = "rest"; text = se.activity === "sleep" ? "꾸벅꾸벅 조는 중" : "쉬는 중"; }
+        else { state = "rest"; text = restText(se, w.zone); }
       }
       const name = (w as unknown as { skinName?: string }).skinName || w.name || "직원";
       const src = this.textures.exists(w.key) ? this.textures.get(w.key).getSourceImage() as CanvasImageSource : null;
-      return { id: w.lookKey.startsWith("main:") ? w.lookKey : w.id, name, tex: src, state, text, onClick: () => this.clickWalker(w) };
+      const hp = se?.contextLeft ?? null, lv = se ? levelOf(se.toolCount) : null;
+      const tip = se ? `${name} · ${text}${hp != null ? ` · HP(남은 컨텍스트) ${hp}%${hp <= 20 ? " — 새 세션을 열 때예요" : ""}` : ""} · Lv.${lv} (도구 ${se.toolCount ?? 0}회)`
+        : `${name} · ${text} (지금 맡은 세션 없음)`;
+      return { id: w.lookKey.startsWith("main:") ? w.lookKey : w.id, name, tex: src, state, text, hp, lv, tip, onClick: () => this.clickWalker(w) };
     });
     renderMembers(list);
   }
@@ -850,16 +1043,16 @@ export class OfficeScene extends Phaser.Scene {
     else if (w.junior) doing = `서브에이전트 · "${esc(parent?.title || "")}" 일을 돕는 중`;
     else if (!s) doing = "-";
     else if (s.state === "waiting") doing = "내 승인·대답을 기다리는 중";
-    else if (s.state === "idle") doing = s.activity === "sleep" ? "오래 쉬는 중 (잠)" : "작업 끝내고 쉬는 중";
+    else if (s.state === "idle") doing = s.activity === "stop" ? "내가 멈춘 뒤 쉬는 중" : w.zone === "out" ? "퇴근하고 정원에서 쉬는 중" : s.activity === "sleep" ? "오래 쉬는 중 (잠)" : "작업 끝내고 쉬는 중";
     else doing = esc(friendly(s));
     const moving = w.walking && !w.leaving ? ` <i>→ ${esc(zone)}${ro(zone)} 이동 중</i>` : "";
     const title = w.junior ? "인턴" : rankOf(s?.toolCount).title;
     const role = ROLE[w.zone] || zone;
     const sub = w.junior ? `${esc(this.walkers.get(w.parentId)?.name || "")} 옆 서브에이전트` : esc(s?.title || "");
     showBubble(this, () => ({ x: w.sprite.x, y: w.sprite.y - HEAD_H[w.stage] - 2 }),
-      `<b>${esc(w.name)} ${title}</b><span class="zone">${esc(role)}</span>${moving}<div>${doing}</div>` +
+      `<b>${esc(w.name)} ${title}${!w.junior && s ? ` · Lv.${levelOf(s.toolCount)}` : ""}</b><span class="zone">${esc(role)}</span>${moving}<div>${doing}</div>` +
       `<small>${sub}${s?.updated ? ` · ${ago(s.updated)}` : ""}${!w.junior && s?.toolCount != null ? ` · 도구 ${s.toolCount}회` : ""}` +
-      `${!w.junior && s?.contextLeft != null ? ` · 컨텍스트 ${s.contextLeft}% 남음` : ""} · 클릭하면 사원증</small>`);
+      `${!w.junior && s?.contextLeft != null ? ` · HP(컨텍스트) ${s.contextLeft}%` : ""} · 클릭하면 사원증</small>`);
   }
 
   /** 역할 별명 붙이기: 부서별 "개발이", 같은 부서에 여럿이면 개발이2… 인턴은 "꼬마" + 부모 별명 */
@@ -880,6 +1073,7 @@ export class OfficeScene extends Phaser.Scene {
 
   /** 목적지에 도착한 순간 (커피머신이면 커피 내리기) */
   arrived(w: Walker) {
+    if (w.after) { const next = w.after; w.after = null; next(); return; }   // 문까지 왔으면 이어서 원래 자리로
     const t = w.target;
     if (!t || t.kind !== "coffee_machine") return;
     const x = t.tx * TILE + 8, y = (t.ty - 1) * TILE + 6;
@@ -1011,10 +1205,9 @@ export class OfficeScene extends Phaser.Scene {
   clickWalker(w: Walker) {
     if (w.npc) { w.say(["네? 부르셨어요?", "지금 바빠요~", "커피 드실래요?"][Math.floor(Math.random() * 3)], 2200); return; }
     const s = w.session ?? this.walkers.get(w.parentId)?.session;
-    const ctxLine = s?.contextLeft != null ? ` · 컨텍스트 ${s.contextLeft}% 남음` : "";
     showCard({ id: w.junior ? w.parentId : w.id, name: w.name, rank: w.junior ? "인턴" : rankOf(s?.toolCount).title,
-      role: (ROLE[w.zone] || ZONE_NAME[w.zone] || "") + ctxLine, dept: ZONE_NAME[w.zone] || "", color: "#e8875a",
-      spriteKey: w.key, scene: this, title: s?.title || "" });
+      role: ROLE[w.zone] || ZONE_NAME[w.zone] || "", dept: ZONE_NAME[w.zone] || "", color: "#e8875a",
+      spriteKey: w.key, scene: this, title: s?.title || "", hp: s?.contextLeft ?? null, lv: s ? levelOf(s.toolCount) : null });
   }
 
   /** 턴이 끝나면: "완료!" + 반짝이 + 소리 */
@@ -1210,7 +1403,8 @@ ${st.costToday ? `$${st.costToday.toFixed(2)}` : "비용 -"}`);
     this.cat?.update(dms / 1000);
     for (const w of [...this.walkers.values()]) {
       w.update(dms / 1000);
-      if (w.leaving && !w.walking && w.tx === this.entrance.tx && w.ty === this.entrance.ty) { w.destroy(); this.walkers.delete(w.id); }
+      const home = !this.door && w.leaving && !w.walking && w.tx === this.entrance.tx && w.ty === this.entrance.ty;
+      if (w.gone || home) { w.destroy(); this.walkers.delete(w.id); }
     }
     this.layoutLabels();
   }

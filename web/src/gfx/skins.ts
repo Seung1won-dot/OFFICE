@@ -40,9 +40,13 @@ export const mainSkins = (set: SkinSet | null) => set?.by.main ?? [];
 /** 파일 이름(확장자 뺀 것, '_' 로 시작해도 그대로) — main:<이름> 열쇠에 씀 */
 export const fileKey = (img: HTMLImageElement) => decodeURIComponent(img.src.split("/").pop() || "").replace(/\.[a-z]+$/i, "");
 
-/** lookKey("main:<이름>", "npc-3-repo_desk" 또는 프로젝트 이름)로 그림 하나를 고정적으로 고른다 */
+/** 주인공이 아닌 그림들 (주인공이 모자랄 때 세션 직원이 받음): skins/*.png, 없으면 부서 폴더 그림 */
+export const otherSkins = (set: SkinSet | null) => !set ? [] : set.all.length ? set.all : Object.entries(set.by).filter(([k]) => k !== "main").flatMap(([, v]) => v);
+
+/** lookKey("main:<이름>", "skin:<이름>", "npc-3-repo_desk" 또는 프로젝트 이름)로 그림 하나를 고정적으로 고른다 */
 export function pickSkin(set: SkinSet, lookKey: string): HTMLImageElement | null {
   if (lookKey.startsWith("main:")) { const n = lookKey.slice(5); const hit = mainSkins(set).find(i => fileKey(i) === n); if (hit) return hit; }
+  if (lookKey.startsWith("skin:")) { const n = lookKey.slice(5); const hit = otherSkins(set).find(i => fileKey(i) === n); if (hit) return hit; }
   const kind = lookKey.match(/^npc-\d+-(\w+)/)?.[1];
   const others = set.all.length ? set.all : Object.entries(set.by).filter(([k]) => k !== "main").flatMap(([, v]) => v);
   const pool = (kind && set.by[KIND_DEPT[kind]]?.length ? set.by[KIND_DEPT[kind]] : null)

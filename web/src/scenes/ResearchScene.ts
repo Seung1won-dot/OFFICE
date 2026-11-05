@@ -4,7 +4,7 @@ import Phaser from "phaser";
 import { MAP_FONT, fontReady } from "../ui/font";
 import { TILE } from "../map/defaultMap";
 import { buildResearchMap } from "../map/researchMap";
-import { makeTilesetCanvas } from "../gfx/tileset";
+import { makeTilesetCanvas, extrudeTiles, TILE_MARGIN, TILE_SPACING } from "../gfx/tileset";
 import { DIR_ROW, hash } from "../gfx/people";
 import { MW as MFW, MH as MFH, MCOLS, monsterLook, makeMonsterSheet } from "../gfx/monsters";
 const FH = 28;
@@ -12,6 +12,7 @@ import { ensureGlowTexture, addSunlight, addNight, lightFromMap, addRugs, addDes
 import { showBubble, hideBubble, placeBubble, esc, ago } from "../ui/bubble";
 import { LAB_NICK } from "../ui/names";
 import { addOutdoor } from "../gfx/outdoor";
+import { addOutdoorLife } from "../gfx/outdoorLife";
 import { loadSkins, pickSkin, makeSkinSheet, skinName, SkinSet } from "../gfx/skins";
 
 export interface ResearchProject {
@@ -63,12 +64,12 @@ export class ResearchScene extends Phaser.Scene {
     const d = this.data_;
     this.layoutKey = JSON.stringify(d);
     const projects = d?.projects ?? [];
-    if (!this.textures.exists("office-tiles")) this.textures.addCanvas("office-tiles", makeTilesetCanvas(null));
+    if (!this.textures.exists("office-tiles")) this.textures.addCanvas("office-tiles", extrudeTiles(makeTilesetCanvas(null)));
     const slots = Math.max(3, Math.ceil(projects.length / 3) * 3);   // 줄을 채우도록 빈 연구실 포함
     const key = "research-map-" + slots;
     if (!this.cache.tilemap.exists(key)) this.cache.tilemap.add(key, { format: Phaser.Tilemaps.Formats.TILED_JSON, data: buildResearchMap(slots) });
     const map = this.make.tilemap({ key });
-    const ts = map.addTilesetImage("office", "office-tiles")!;
+    const ts = map.addTilesetImage("office", "office-tiles", TILE, TILE, TILE_MARGIN, TILE_SPACING)!;
     map.createLayer("floor", ts)!.setDepth(0);
     map.createLayer("walls", ts)!.setDepth(1);
     const furn = map.createLayer("furniture", ts)!.setDepth(2);
@@ -88,7 +89,8 @@ export class ResearchScene extends Phaser.Scene {
     lightFromMap(this, map, rooms);
     addSunlight(this, map);
     addLife(this, map);
-    addOutdoor(this, map.widthInPixels, map.heightInPixels, null, 4747);   // 화면 남는 곳은 밝은 바깥 풍경
+    const outdoor = addOutdoor(this, map.widthInPixels, map.heightInPixels, null, 4747);   // 화면 남는 곳은 밝은 바깥 풍경
+    addOutdoorLife(this, outdoor.geo, outdoor.season);   // 계절 따라 흩날리는 것 · 구름 그림자 · 새 · 지나가는 차
 
     // 라운지 간판 + 주간 로그 게시판
     sign(this, 1 * TILE + 3, 1 * TILE + 2, "B1 연구실", "#7fd1c7");

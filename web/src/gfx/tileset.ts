@@ -231,3 +231,23 @@ export function makeTilesetCanvas(assets?: AssetTiles | null): HTMLCanvasElement
   for (const gid of OUTLINED) outlineRegion(ctx, ...pos(gid), TILE, TILE);
   return c;
 }
+
+/** 화면 배율이 소수(1.5배 등)일 때 이웃 타일 색이 한 줄씩 새어 나와 방을 가로지르는 줄이 생기지 않게,
+ *  타일마다 가장자리 픽셀을 1px 바깥으로 늘린 시트를 만든다. addTilesetImage(..., TILE_MARGIN, TILE_SPACING) 와 함께 쓴다. */
+export const TILE_MARGIN = 1, TILE_SPACING = 2;
+export function extrudeTiles(src: HTMLImageElement | HTMLCanvasElement, size = TILE): HTMLCanvasElement {
+  const sw = (src as HTMLImageElement).naturalWidth || src.width, sh = (src as HTMLImageElement).naturalHeight || src.height;
+  const cols = Math.floor(sw / size), rows = Math.floor(sh / size), S = size + TILE_SPACING;
+  const cv = document.createElement("canvas"); cv.width = cols * S; cv.height = rows * S;
+  const g = cv.getContext("2d")!; g.imageSmoothingEnabled = false;
+  const cp = (sx: number, sy: number, w: number, h: number, dx: number, dy: number) => g.drawImage(src, sx, sy, w, h, dx, dy, w, h);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const sx = c * size, sy = r * size, dx = c * S + TILE_MARGIN, dy = r * S + TILE_MARGIN, e = size - 1;
+    cp(sx, sy, size, size, dx, dy);
+    cp(sx, sy, size, 1, dx, dy - 1); cp(sx, sy + e, size, 1, dx, dy + size);        // 위·아래 줄
+    cp(sx, sy, 1, size, dx - 1, dy); cp(sx + e, sy, 1, size, dx + size, dy);        // 왼쪽·오른쪽 줄
+    cp(sx, sy, 1, 1, dx - 1, dy - 1); cp(sx + e, sy, 1, 1, dx + size, dy - 1);      // 네 모서리
+    cp(sx, sy + e, 1, 1, dx - 1, dy + size); cp(sx + e, sy + e, 1, 1, dx + size, dy + size);
+  }
+  return cv;
+}

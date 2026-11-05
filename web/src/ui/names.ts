@@ -20,16 +20,22 @@ export function rankOf(toolCount = 0) {
   return { index: r, title: RANKS[r].title };
 }
 
+/** 레벨 (1~100): 누적 도구 호출 수의 세제곱근 — 처음엔 쑥쑥, 갈수록 천천히 (도구 2000회쯤 Lv.100) */
+export function levelOf(toolCount = 0) {
+  return Math.max(1, Math.min(100, Math.floor(Math.cbrt(Math.max(0, toolCount) * 500))));
+}
+
 /** 지금 맡은 역할 (구역 기준) */
 export const ROLE: Record<string, string> = {
   think: "생각 정리", dev: "코딩", lib: "자료 찾기", srv: "명령 실행", research: "웹 조사", meet: "서브에이전트 회의",
   gh: "GitHub 출장", plan: "Notion 출장", obsidian: "Obsidian 출장", ceo: "결재 대기", cafe: "휴식", nap: "수면", standup: "스탠드업",
+  out: "퇴근 후 정원",
 };
 
 /** 역할 별명: 지금 있는 부서에 맞춰 (같은 별명이 여럿이면 뒤에 번호) */
 export const NICK: Record<string, string> = {
   think: "고민이", dev: "개발이", gh: "깃돌이", plan: "기획이", research: "조사리", obsidian: "노트리", lib: "책벌레", srv: "서버지기",
-  meet: "회의러", ceo: "결재대기", cafe: "커피러", nap: "잠꾸러기", standup: "모임러",
+  meet: "회의러", ceo: "결재대기", cafe: "커피러", nap: "잠꾸러기", standup: "모임러", out: "산책러",
 };
 /** B1 연구원 별명: 상태에 맞춰 */
 export const LAB_NICK: Record<string, string> = { working: "실험이", quiet: "고민이", sleep: "잠꾸러기", done: "박사님" };

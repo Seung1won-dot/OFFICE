@@ -31,14 +31,26 @@ export function ensureEmotes(scene: Phaser.Scene) {
     px(1, 1, "#ffd166"); px(7, 1, "#ffd166"); px(1, 7, "#ffd166"); px(7, 7, "#ffd166");
   });
   make(scene, "emo-spark-1", 9, 9, px => { px(4, 2, "#fff2c2", 1, 5); px(2, 4, "#fff2c2", 5, 1); px(4, 4, "#ffffff"); });
+  // z z — 꾸벅꾸벅 (정원 벤치에서 졸 때). 작은 z 부터 하나씩 떠오르는 3프레임
+  const z = (px: (x: number, y: number, c: string, w?: number, h?: number) => void, x: number, y: number, s: number) => {
+    px(x - 1, y - 1, OUT, s + 2, s + 2);
+    px(x, y, "#ffffff", s, 1); px(x, y + s - 1, "#ffffff", s, 1);           // 윗줄 · 아랫줄
+    for (let k = 1; k < s - 1; k++) px(x + s - 1 - k, y + k, "#ffffff");      // 오른쪽 위 → 왼쪽 아래 사선
+  };
+  for (let f = 0; f < 3; f++) make(scene, `emo-zzz-${f}`, 16, 17, px => {
+    z(px, 1, 11, 4);
+    if (f >= 1) z(px, 5, 6, 4);
+    if (f >= 2) z(px, 10, 1, 5);
+  });
 }
 
-export type Emote = "" | "alert" | "think" | "spark";
+export type Emote = "" | "alert" | "think" | "spark" | "zzz";
 
 /** 지금 보여줄 아이콘과 프레임 텍스처 */
 export function emoteFrame(e: Emote, now: number): string {
   if (e === "alert") return "emo-alert";
   if (e === "think") return `emo-think-${Math.floor(now / 380) % 3}`;
   if (e === "spark") return `emo-spark-${Math.floor(now / 300) % 2}`;
+  if (e === "zzz") return `emo-zzz-${Math.floor(now / 700) % 3}`;
   return "";
 }
