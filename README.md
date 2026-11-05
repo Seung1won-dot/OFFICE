@@ -5,7 +5,7 @@
 
 ![1층 사무실](docs/images/office-1f.png)
 
-> 위 화면은 데모용 가짜 세션으로 찍었어요. 주황 배지를 단 직원이 지금 일하고 있는 실제 세션, 노란 "! 확인 필요"는 내 대답을 기다리는 세션이에요.
+> 위 화면은 데모용 가짜 세션으로 찍었어요. 주황 이름표를 단 직원이 지금 일하고 있는 실제 세션, 노란 "! 확인이 필요해요"는 내 대답을 기다리는 세션이에요.
 
 ## 기능
 
@@ -23,6 +23,9 @@
 - **한눈에 보이는 실제 작업**: 일하는 세션은 발밑 상태 링, 스포트라이트, 머리 위 "파일 고치는 중: app.ts" 같은 작업 표시가 붙어요.
 - **커서를 올리면 말풍선**: 누가, 어느 부서에서, 무엇을 하는지.
 - **역할 별명 + 직급**: "개발이 과장", "서버지기 대리"… 직급은 그 세션의 누적 도구 호출 수로 올라가요 (인턴 → 사원 → 대리 → 과장 → 부장).
+- **오리지널 몬스터 직원**: 직원은 코드로 그린 동글동글한 몬스터예요. 직급이 오르면 진화해요.
+- **상태 아이콘**: 머리 옆에 확인 필요 ❗ · 생각 중 💭 · 방금 끝냄 ✨ 이 떠요. 걸을 땐 통통 튀고 멈출 땐 폭 내려앉아요.
+- **건물 밖 풍경**: 화면에 남는 곳은 잔디·나무·산책로·도로로 채워져서, 어떤 비율로 띄워도 한 장의 그림처럼 보여요.
 - **서브에이전트 = 인턴**: 부모 옆자리에 앉아요.
 - **배경 직원**: 사무실이 텅 비지 않게, 실제 세션과 별개로 일하고 커피 타러 다니는 직원들 (설정에서 끄기 가능).
 - **B1 연구실 층**: `research-log` 폴더의 프로젝트 기록을 방으로 보여주고, 주간 로그 초안을 만들어 줘요.
@@ -62,6 +65,28 @@ npm start         # → http://localhost:4747
 | `npm run uninstall-hooks` | `~/.claude/settings.json` 에서 Claude Office 훅만 제거 (백업 후) |
 | `npm run check-secrets` | 공개 전 점검: 토큰 패턴·개인 절대 경로·이메일 검출 |
 | `npm run draft` | 이번 주 주간 로그 초안 만들기 |
+
+### 늘 켜 두기 (macOS)
+
+서브 모니터에 계속 띄워 둘 거라면 로그인할 때 서버가 켜지고, 꺼지면 다시 켜지게 해 두면 편해요.
+`~/Library/LaunchAgents/com.example.claude-office.plist` 를 만들고 (경로 두 곳은 내 환경에 맞게):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.claude-office</string>
+  <key>ProgramArguments</key><array><string>/opt/homebrew/bin/node</string><string>server.js</string></array>
+  <key>WorkingDirectory</key><string>/path/to/claude-office</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict></plist>
+```
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.claude-office.plist   # 켜기
+launchctl bootout gui/$(id -u)/com.example.claude-office                                  # 끄기
+```
 
 ### 키보드
 
@@ -122,6 +147,21 @@ research-log/
 
 모든 타일·가구·캐릭터는 **코드로 직접 그린 픽셀아트**예요 (`web/src/gfx/`). 외부 에셋 없이 동작해요.
 다른 타일셋을 쓰고 싶으면 `assets/README.md` 를 보세요 (재배포 불가 에셋은 `assets/third-party/` 에 직접 넣는 방식, 깃에는 안 올라감).
+
+### 내 캐릭터 그림으로 바꾸기 (개인용)
+
+직접 그린 그림이나 개인적으로 쓸 그림을 `assets/third-party/skins/` 에 넣으면 몬스터 대신 그 그림으로 그려요. 이 폴더는 `.gitignore` 에 들어 있어서 **저장소에는 절대 올라가지 않아요**. 남에게 배포할 수 없는 그림은 여기에만 두세요.
+
+| 넣는 곳 | 쓰임 |
+|---|---|
+| `skins/main/*.png` | 주인공: 실제 세션이 먼저 이 중에서 받고, 남는 주인공은 늘 사무실에 나와 있어요 |
+| `skins/*.png` | 그 밖의 직원 |
+| `skins/<부서>/*.png` | 그 부서 배경 직원 (`dev`, `gh`, `plan`, `research`, `obsidian`) |
+
+- 파일 이름이 머리 위 이름표가 돼요 (`민지.png` → "민지", `_` 로 시작하면 이름표 없음).
+- 한 가지 색 배경은 자동으로 지우고, 큰 그림은 32px 에 맞게 줄여요. 결과는 `http://localhost:4747/?skin-preview` 에서 한눈에 볼 수 있어요.
+- 256x96 (32x32 칸 8열 x 3행) 시트를 넣으면 걷기·앉기 프레임을 그대로 써요.
+- 끄려면 `config.json` 에 `"skins": false`.
 
 ## 구조
 

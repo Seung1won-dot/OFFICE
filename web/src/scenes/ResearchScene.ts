@@ -1,11 +1,14 @@
 // B1 연구실 층: research-log 의 프로젝트마다 방 하나, 연구원 한 명.
 // 기록 파일은 서버가 읽기만 하고, 화면에는 이름·상태·숫자만 온다 (경로·본문 없음).
 import Phaser from "phaser";
+import { MAP_FONT, fontReady } from "../ui/font";
 import { TILE } from "../map/defaultMap";
 import { buildResearchMap } from "../map/researchMap";
 import { makeTilesetCanvas } from "../gfx/tileset";
-import { FW, FH, COLS, DIR_ROW, lookFor, makeSheet, hash } from "../gfx/people";
-import { ensureGlowTexture, addNight, lightFromMap, addRugs, addDeskProps, addLife, sign, glow, DEPTH } from "../gfx/ambience";
+import { DIR_ROW, hash } from "../gfx/people";
+import { MW as MFW, MH as MFH, MCOLS, monsterLook, makeMonsterSheet } from "../gfx/monsters";
+const FH = 28;
+import { ensureGlowTexture, addSunlight, addNight, lightFromMap, addRugs, addDeskProps, addLife, sign, glow, DEPTH } from "../gfx/ambience";
 import { showBubble, hideBubble, placeBubble, esc, ago } from "../ui/bubble";
 import { LAB_NICK } from "../ui/names";
 
@@ -27,6 +30,7 @@ export class ResearchScene extends Phaser.Scene {
 
   async create() {
     (window as any).research = this;
+    await fontReady;   // 픽셀 글꼴이 준비된 뒤 글씨를 그림
     this.data_ = await this.fetchData();
     this.build();
     this.time.addEvent({ delay: 15000, loop: true, callback: () => this.refresh() });
@@ -35,7 +39,7 @@ export class ResearchScene extends Phaser.Scene {
       window.addEventListener("resize", () => this.fit());
       new ResizeObserver(() => this.fit()).observe(document.getElementById("stage")!);
     }
-    this.events.once("wake", () => { this.refresh(); this.fit(); this.renderPanel(); });
+    this.events.on("wake", () => { this.refresh(); this.fit(); this.renderPanel(); });
   }
 
   async fetchData(): Promise<ResearchData | null> {
@@ -77,7 +81,7 @@ export class ResearchScene extends Phaser.Scene {
     addRugs(this, rooms, rugColors);
     addDeskProps(this, pois, ["lab_seat"]);
     lightFromMap(this, map, rooms);
-    addNight(this, map.widthInPixels, map.heightInPixels);
+    addSunlight(this, map);
     addLife(this, map);
 
     // 라운지 간판 + 주간 로그 게시판
@@ -86,7 +90,7 @@ export class ResearchScene extends Phaser.Scene {
 
     if (!projects.length) {
       this.add.text(map.widthInPixels / 2, 11 * TILE, d?.error ? `research-log 읽기 실패: ${d.error}` : "research-log/projects/ 에 기록(.md)을 추가하면 방이 생겨요",
-        { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "8px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 }).setOrigin(0.5).setResolution(4).setDepth(DEPTH.tag);
+        { fontFamily: MAP_FONT, fontSize: "7px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 }).setOrigin(0.5).setResolution(4).setDepth(DEPTH.tag);
     }
     projects.forEach((p, i) => this.buildRoom(p, i, rooms.find(r => r.key === `lab_${i}`)!, pois));
     // 완료가 아니면 트로피 숨김
@@ -96,7 +100,7 @@ export class ResearchScene extends Phaser.Scene {
       if (!p) {   // 빈 연구실
         const r = rooms.find(rr => rr.key === `lab_${i}`)!;
         sign(this, r.x + 3, r.y + 2, "빈 연구실", "#7d6c60");
-        this.add.text(r.x + r.w / 2, r.y + r.h / 2 + 10, "새 프로젝트 자리", { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "6px", color: "#c9b8a4", stroke: "#2a1d1c", strokeThickness: 3 })
+        this.add.text(r.x + r.w / 2, r.y + r.h / 2 + 10, "새 프로젝트 자리", { fontFamily: MAP_FONT, fontSize: "7px", color: "#c9b8a4", stroke: "#2a1d1c", strokeThickness: 3 })
           .setOrigin(0.5).setResolution(4).setDepth(DEPTH.sign);
         this.add.rectangle(r.x, r.y, r.w, r.h, 0x120a10, 0.35).setOrigin(0).setDepth(DEPTH.night - 1);
       }
@@ -111,7 +115,7 @@ export class ResearchScene extends Phaser.Scene {
     const ok = d.weeklyWritten, over = d.overdue;
     const text = ok ? `${d.week} 주간 로그 작성 ✓` : over ? `${d.week} 주간 로그 미작성!` : `${d.week} 주간 로그 아직`;
     const color = ok ? "#86c060" : over ? "#ff6b5a" : "#d6a748";
-    const t = this.add.text(x + 32, y + 4, text, { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "7px", color: "#2a1d1c" }).setOrigin(0.5, 0).setResolution(4).setDepth(DEPTH.sign + 1);
+    const t = this.add.text(x + 32, y + 4, text, { fontFamily: MAP_FONT, fontSize: "7px", color: "#2a1d1c" }).setOrigin(0.5, 0).setResolution(4).setDepth(DEPTH.sign + 1);
     const g = this.add.graphics().setDepth(DEPTH.sign);
     g.fillStyle(Phaser.Display.Color.HexStringToColor(color).color, 1).fillRoundedRect(x + 32 - t.width / 2 - 5, y + 2, t.width + 10, 11, 3);
     if (over) this.tweens.add({ targets: [g, t], alpha: 0.45, duration: 700, yoyo: true, repeat: -1 });
@@ -124,22 +128,23 @@ export class ResearchScene extends Phaser.Scene {
     const s = sign(this, r.x + 3, r.y + 2, label, accent);
     // 방 정보: 섹션 n/4 · 사례 n · 수정일
     const info = `섹션 ${p.sections} · 사례 ${p.cases} · ${new Date(p.updated).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}`;
-    this.add.text(r.x + 3 + s.w + 4, r.y + 3.5, info, { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "6px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 })
+    this.add.text(r.x + 3 + s.w + 4, r.y + 3.5, info, { fontFamily: MAP_FONT, fontSize: "7px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 })
       .setResolution(4).setDepth(DEPTH.sign);
     // 연구원 (흰 가운 + 안경). 상태에 따라 자리
     const kind = p.state === "sleep" ? "lab_sofa" : p.state === "done" ? "lab_trophy" : "lab_seat";
     const spot = pois.find(q => q.name === `${kind}_${i}`)!;
-    const key = "lab-" + hash(p.name);
+    const stage = p.state === "done" ? 2 : 1;
+    const key = `labmon-${stage}-${hash(p.name)}`;
     if (!this.textures.exists(key)) {
-      const tex = this.textures.addCanvas(key, makeSheet(lookFor(p.name, "lab")))!;
-      for (let rr = 0; rr < 3; rr++) for (let c = 0; c < COLS; c++) tex.add(rr * COLS + c, 0, c * FW, rr * FH, FW, FH);
+      const tex = this.textures.addCanvas(key, makeMonsterSheet(monsterLook(p.name, "sprout", stage)))!;
+      for (let rr = 0; rr < 3; rr++) for (let c = 0; c < MCOLS; c++) tex.add(rr * MCOLS + c, 0, c * MFW, rr * MFH, MFW, MFH);
     }
     const dirRow = DIR_ROW[(spot.dir === "left" ? "right" : spot.dir) as "down" | "up" | "right"];
     const sit = spot.pose !== "stand";
-    const spr = this.add.sprite(spot.tx * TILE + TILE / 2, spot.ty * TILE + TILE - 1, key, dirRow * COLS + (sit ? 4 : 0)).setOrigin(0.5, 1);
+    const spr = this.add.sprite(spot.tx * TILE + TILE / 2, spot.ty * TILE + TILE - 1, key, dirRow * MCOLS + (sit ? 4 : 0)).setOrigin(0.5, 31 / 32);
     spr.setDepth(10 + spr.y).setFlipX(spot.dir === "left");
     if (spot.pose === "lie") spr.setAngle(-90).setPosition(spr.x + 4, spr.y - 4);
-    if (p.state === "working") this.tweens.add({ targets: spr, y: spr.y - 1, duration: 260, yoyo: true, repeat: -1 });     // 타자 치는 들썩임
+    if (p.state === "working") this.time.addEvent({ delay: 260, loop: true, callback: () => spr.setFrame(dirRow * MCOLS + (spr.frame.name === String(dirRow * MCOLS + 4) ? 5 : 4)) });   // 타자 치는 모션
     if (p.state === "done") {
       for (let k = 0; k < 3; k++) {
         const sp = this.add.rectangle(spot.tx * TILE + 22 + k * 3, spot.ty * TILE - 10 + k * 2, 1, 1, 0xfff2b0).setDepth(DEPTH.glow);
@@ -149,7 +154,7 @@ export class ResearchScene extends Phaser.Scene {
     }
     const icon = p.state === "sleep" ? "z" : p.state === "quiet" ? "…" : "";
     if (icon) {
-      const t = this.add.text(spr.x, spr.y - (spot.pose === "lie" ? 14 : FH + 1), icon, { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "7px", color: "#2a1d1c", backgroundColor: "#f6ead2", padding: { x: 3, y: 1 } })
+      const t = this.add.text(spr.x, spr.y - (spot.pose === "lie" ? 14 : FH + 1), icon, { fontFamily: MAP_FONT, fontSize: "7px", color: "#2a1d1c", backgroundColor: "#f6ead2", padding: { x: 3, y: 1 } })
         .setOrigin(0.5, 1).setResolution(4).setDepth(DEPTH.icon);
       this.tweens.add({ targets: t, y: t.y - 2, duration: 1200, yoyo: true, repeat: -1, ease: "Sine.inOut" });
     }
@@ -157,7 +162,7 @@ export class ResearchScene extends Phaser.Scene {
     const who = LAB_NICK[p.state] + (this.data_!.projects.filter((q, k) => k < i && q.state === p.state).length + 1 > 1
       ? this.data_!.projects.filter((q, k) => k < i && q.state === p.state).length + 1 : "");
     const rankT = p.state === "done" ? "수석연구원" : "연구원";
-    this.add.text(spr.x, spr.y + 1 + (spot.pose === "lie" ? -6 : 0), `${who} ${rankT}`, { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "7px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 })
+    this.add.text(spr.x, spr.y + 1 + (spot.pose === "lie" ? -6 : 0), `${who} ${rankT}`, { fontFamily: MAP_FONT, fontSize: "7px", color: "#f6ead2", stroke: "#2a1d1c", strokeThickness: 3 })
       .setOrigin(0.5, 0).setResolution(4).setDepth(DEPTH.tag);
     // 말풍선: 연구원 또는 방에 커서
     const html = () => {
@@ -175,9 +180,9 @@ export class ResearchScene extends Phaser.Scene {
     const map = (this as any).map as Phaser.Tilemaps.Tilemap | undefined;
     if (!map || !this.sys.isActive()) return;
     const W = map.widthInPixels, H = map.heightInPixels;
-    const box = document.getElementById("stage")!.getBoundingClientRect();
+    const sb = document.getElementById("stage")!.getBoundingClientRect(), box = { width: sb.width - 16, height: sb.height - 16 };
     let z = Math.min(box.width / W, box.height / H);
-    z = z >= 2 ? Math.floor(z) : Math.max(0.5, Math.floor(z * 8) / 8);
+    z = Math.max(0.5, Math.floor(z * 8) / 8);   // 화면을 최대한 채우기 (1/8 단위)
     this.scale.resize(Math.round(W * z), Math.round(H * z));
     this.cameras.main.setZoom(z).centerOn(W / 2, H / 2).setRoundPixels(true);
   }

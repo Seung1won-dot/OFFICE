@@ -1,0 +1,576 @@
+{
+ "name": "office",
+ "tilewidth": 16,
+ "tileheight": 16,
+ "tilecount": 71,
+ "columns": 16,
+ "image": "office-tiles.png",
+ "imagewidth": 256,
+ "imageheight": 80,
+ "margin": 0,
+ "spacing": 0,
+ "tiles": [
+  {
+   "id": 0,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "WOOD"
+    }
+   ]
+  },
+  {
+   "id": 1,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CARPET"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "GRID"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "GREEN"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "PURPLE"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "BEIGE"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CAFE"
+    }
+   ]
+  },
+  {
+   "id": 7,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "NAP"
+    }
+   ]
+  },
+  {
+   "id": 8,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "LOBBY"
+    }
+   ]
+  },
+  {
+   "id": 9,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "OFFICE"
+    }
+   ]
+  },
+  {
+   "id": 10,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CAP"
+    }
+   ]
+  },
+  {
+   "id": 11,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "FACE"
+    }
+   ]
+  },
+  {
+   "id": 12,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "WINDOW"
+    }
+   ]
+  },
+  {
+   "id": 13,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "DESK"
+    }
+   ]
+  },
+  {
+   "id": 14,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CHAIR"
+    }
+   ]
+  },
+  {
+   "id": 15,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "SHELF"
+    }
+   ]
+  },
+  {
+   "id": 16,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "RACK"
+    }
+   ]
+  },
+  {
+   "id": 17,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "PLANT"
+    }
+   ]
+  },
+  {
+   "id": 18,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "SOFA"
+    }
+   ]
+  },
+  {
+   "id": 19,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "BED_TOP"
+    }
+   ]
+  },
+  {
+   "id": 20,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "BED_BOT"
+    }
+   ]
+  },
+  {
+   "id": 21,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CAFE_TABLE"
+    }
+   ]
+  },
+  {
+   "id": 22,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "COFFEE"
+    }
+   ]
+  },
+  {
+   "id": 23,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "WHITEBOARD"
+    }
+   ]
+  },
+  {
+   "id": 24,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "BENCH"
+    }
+   ]
+  },
+  {
+   "id": 25,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "GLOBE"
+    }
+   ]
+  },
+  {
+   "id": 26,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "MAT"
+    }
+   ]
+  },
+  {
+   "id": 27,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CABINET"
+    }
+   ]
+  },
+  {
+   "id": 28,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "MTABLE"
+    }
+   ]
+  },
+  {
+   "id": 29,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "BOSSDOOR"
+    }
+   ]
+  },
+  {
+   "id": 30,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CLOCK"
+    }
+   ]
+  },
+  {
+   "id": 31,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "LAMP"
+    }
+   ]
+  },
+  {
+   "id": 32,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "RACK_TOP"
+    }
+   ]
+  },
+  {
+   "id": 33,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "SHELF_TOP"
+    }
+   ]
+  },
+  {
+   "id": 34,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "LAPTOP_DESK"
+    }
+   ]
+  },
+  {
+   "id": 35,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "PLANT_TOP"
+    }
+   ]
+  },
+  {
+   "id": 36,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "GLASS"
+    }
+   ]
+  },
+  {
+   "id": 37,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "COUNTER"
+    }
+   ]
+  },
+  {
+   "id": 38,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "STANDBOARD"
+    }
+   ]
+  },
+  {
+   "id": 39,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "TEAL"
+    }
+   ]
+  },
+  {
+   "id": 40,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "DESK_UP"
+    }
+   ]
+  },
+  {
+   "id": 41,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CHAIR_UP"
+    }
+   ]
+  },
+  {
+   "id": 42,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "LAB"
+    }
+   ]
+  },
+  {
+   "id": 43,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "TROPHY"
+    }
+   ]
+  },
+  {
+   "id": 44,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "ELEVATOR"
+    }
+   ]
+  },
+  {
+   "id": 45,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "STEEL"
+    }
+   ]
+  },
+  {
+   "id": 46,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "DOOR"
+    }
+   ]
+  },
+  {
+   "id": 47,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "DOOR_FACE"
+    }
+   ]
+  },
+  {
+   "id": 48,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "VOID"
+    }
+   ]
+  },
+  {
+   "id": 49,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "WALLTOP"
+    }
+   ]
+  },
+  {
+   "id": 65,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "PRINTER"
+    }
+   ]
+  },
+  {
+   "id": 66,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "WATER"
+    }
+   ]
+  },
+  {
+   "id": 67,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "LEAD_T"
+    }
+   ]
+  },
+  {
+   "id": 68,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "LEAD_B"
+    }
+   ]
+  },
+  {
+   "id": 69,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CHAIR_L"
+    }
+   ]
+  },
+  {
+   "id": 70,
+   "properties": [
+    {
+     "name": "name",
+     "type": "string",
+     "value": "CHAIR_BACK"
+    }
+   ]
+  }
+ ],
+ "type": "tileset",
+ "version": "1.10"
+}

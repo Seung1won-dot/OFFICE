@@ -1,6 +1,6 @@
 // 코드로 그리는 타일셋 (16px) — "저녁의 대기업 사옥" 팔레트 하나로 통일
 // 슬레이트·그레이 바탕 + 흰 사무가구 + 팀별 포인트 색. 가구 아래엔 1px 그림자.
-import { G, TILE, TILE_COUNT } from "../map/defaultMap";
+import { G, TILE, TILE_COUNT, TILE_COLS } from "../map/defaultMap";
 import { outlineRegion } from "./outline";
 
 type R = (x: number, y: number, w: number, h: number, c: string) => void;
@@ -8,15 +8,15 @@ type R = (x: number, y: number, w: number, h: number, c: string) => void;
 // ── 팔레트 ──
 export const P = {
   ink: "#2a1d1c", cap: "#2b2220", capHi: "#3d302b",
-  wall: "#e2d3b5", wallHi: "#efe2c6", wainscot: "#8a5e3e", base: "#5a3c28",
-  floor: "#9b6b43", floorSeam: "#85593a", floorHi: "#a8774d",
+  wall: "#f1e6d0", wallHi: "#fbf3e2", wainscot: "#9c6c48", base: "#6a4a32",
+  floor: "#bdb3a3", floorSeam: "#b0a593", floorHi: "#c6bcac",
   white: "#c89463", whiteSide: "#9c6a42", whiteLine: "#b3804f",       // 원목 책상 상판·옆면
   steel: "#b7b2a8", steelDk: "#7d766c", black: "#2f2a2e", blackHi: "#443d42",
   walnut: "#6e4a32", walnutHi: "#835a3e", oak: "#7a5236", oakSeam: "#664430",
   screen: "#3d6fa8", screenHi: "#7fb6ff", led: "#7ee08a", ledB: "#7fb6ff", warm: "#ffd98a",
   leaf: "#5e9a4a", leafHi: "#86c060", leafDk: "#3f7037",
   navy: "#4d6a8a", navyHi: "#5d7da0",
-  shadow: "rgba(40,20,10,0.28)",
+  shadow: "rgba(40,20,10,0.25)",   // 그림자: 모든 가구·캐릭터 같은 색·투명도, 아래쪽
 };
 
 function carpet(r: R, base: string, dot: string) {
@@ -35,34 +35,37 @@ function bookRow(r: R, y: number, h: number, seed: number) {
 
 const DRAW: Record<number, (r: R) => void> = {
   // ── 바닥 ──
-  [G.OFFICE]: (r) => planks(r, P.floor, P.floorSeam, P.floorHi),                      // 오픈 오피스: 따뜻한 원목
-  [G.CARPET]: (r) => carpet(r, "#4d6a8a", "#57759a"),          // 개발팀 섬: 더스티 블루
-  [G.TEAL]: (r) => carpet(r, "#5f7f5a", "#688a62"),            // GitHub 섬: 세이지
-  [G.LOBBY]: (r) => carpet(r, "#8a6a86", "#94748f"),           // 기획팀 섬: 모브
-  [G.GREEN]: (r) => carpet(r, "#9a8a4e", "#a59456"),           // 연구팀 섬: 머스터드
-  [G.PURPLE]: (r) => carpet(r, "#6b6f86", "#757990"),          // 회의실
-  [G.NAP]: (r) => carpet(r, "#3b3f63", "#43476d"),             // 수면실: 인디고
-  [G.WOOD]: (r) => planks(r, P.oak, P.oakSeam, "#94744f"),       // 자료실·캐비닛실: 오크
-  [G.BEIGE]: (r) => {                                            // 대표실·로비: 크림 타일
-    r(0, 0, 16, 16, "#d8c9ad"); r(0, 15, 16, 1, "#c4b496"); r(15, 0, 1, 16, "#c4b496"); r(0, 0, 16, 1, "#e4d7bd"); r(5, 6, 2, 1, "#cfbfa2"); r(10, 11, 2, 1, "#cfbfa2");
+  [G.OFFICE]: (r) => {                                            // 오픈 오피스: 저채도 카펫 타일
+    r(0, 0, 16, 16, P.floor); r(0, 0, 16, 1, P.floorHi); r(0, 0, 1, 16, P.floorHi); r(15, 0, 1, 16, P.floorSeam); r(0, 15, 16, 1, P.floorSeam);
+    for (const [x, y] of [[3, 4], [10, 2], [6, 9], [13, 12], [2, 13]]) r(x, y, 1, 1, "#b5ab9a");
   },
-  [G.CAFE]: (r) => {                                             // 탕비실: 테라코타·크림 체크
-    const a = "#c9906a", b = "#e6d3b3"; r(0, 0, 8, 8, a); r(8, 0, 8, 8, b); r(0, 8, 8, 8, b); r(8, 8, 8, 8, a);
-    r(0, 0, 16, 1, "rgba(255,255,255,0.12)");
+  [G.CARPET]: (r) => carpet(r, "#8e9bb0", "#97a4b8"),          // 개발팀 섬: 차분한 블루그레이
+  [G.TEAL]: (r) => carpet(r, "#97a690", "#a0ae99"),            // GitHub 섬: 차분한 세이지
+  [G.LOBBY]: (r) => carpet(r, "#ab9eab", "#b3a6b3"),           // 기획팀 섬: 차분한 모브
+  [G.GREEN]: (r) => carpet(r, "#b5ab8c", "#bdb394"),           // 연구팀 섬: 차분한 머스터드
+  [G.PURPLE]: (r) => carpet(r, "#a4a8b9", "#acb0c0"),          // 회의실
+  [G.NAP]: (r) => carpet(r, "#7c82a3", "#848aab"),             // 수면실
+  [G.WOOD]: (r) => planks(r, "#b98a5e", "#a1744c", "#c69a6c"),       // 자료실·대표실: 원목
+  [G.BEIGE]: (r) => {                                            // 리셉션: 밝은 대리석
+    r(0, 0, 16, 16, "#e6dcc8"); r(0, 15, 16, 1, "#d4c8b1"); r(15, 0, 1, 16, "#d4c8b1"); r(0, 0, 16, 1, "#efe7d6"); r(4, 6, 3, 1, "#dacfba"); r(10, 11, 2, 1, "#dacfba");
+  },
+  [G.CAFE]: (r) => {                                             // 탕비실: 밝은 타일
+    r(0, 0, 16, 16, "#ebe5d9"); r(8, 0, 8, 8, "#e3dccd"); r(0, 8, 8, 8, "#e3dccd");
+    r(0, 7, 16, 1, "#d2cabb"); r(7, 0, 1, 16, "#d2cabb"); r(0, 15, 16, 1, "#d2cabb"); r(15, 0, 1, 16, "#d2cabb");
   },
   [G.GRID]: (r) => {                                             // 서버실: 액세스 플로어
     r(0, 0, 16, 16, "#3a3a44"); r(0, 0, 16, 1, "#47474f"); r(0, 0, 1, 16, "#47474f"); r(15, 0, 1, 16, "#2f2f37"); r(0, 15, 16, 1, "#2f2f37");
     for (let y = 4; y < 14; y += 3) for (let x = 4; x < 14; x += 3) r(x, y, 1, 1, "#303038");
   },
-  [G.MAT]: (r) => { r(0, 0, 16, 16, "#7a3b34"); r(1, 1, 14, 14, "#8f4a40"); r(2, 2, 12, 1, "#a35a4e"); r(1, 14, 14, 1, "#6a3029"); },
-  [G.CAP]: (r) => { r(0, 0, 16, 16, P.cap); r(0, 0, 16, 1, P.capHi); },
-  [G.FACE]: (r) => { r(0, 0, 16, 16, P.wall); r(0, 0, 16, 1, P.wallHi); for (let x = 1; x < 16; x += 4) r(x, 1, 1, 8, "#d8c8a8"); r(0, 9, 16, 6, P.wainscot); r(0, 9, 16, 1, "#a87450"); r(4, 10, 1, 5, "#7a5236"); r(12, 10, 1, 5, "#7a5236"); r(0, 15, 16, 1, P.base); },
-  [G.WINDOW]: (r) => {                                           // 통유리 창 + 도시 야경
+  [G.MAT]: (r) => { r(0, 0, 16, 16, "#8f4a40"); r(1, 1, 14, 14, "#a35a4e"); r(2, 2, 12, 1, "#b56a5c"); r(1, 14, 14, 1, "#7a3b34"); },
+  [G.CAP]: (r) => { r(0, 0, 16, 16, "#cbb89a"); },
+  [G.FACE]: (r) => { r(0, 0, 16, 16, P.wall); r(0, 0, 16, 1, P.wallHi); for (let x = 1; x < 16; x += 4) r(x, 1, 1, 8, "#e8dcc4"); r(0, 9, 16, 6, P.wainscot); r(0, 9, 16, 1, "#b8845c"); r(4, 10, 1, 5, "#86583a"); r(12, 10, 1, 5, "#86583a"); r(0, 15, 16, 1, P.base); },
+  [G.WINDOW]: (r) => {                                           // 낮 창문: 하늘 + 구름 + 먼 빌딩
     r(0, 0, 16, 16, P.wall); r(0, 15, 16, 1, P.base);
-    r(1, 1, 14, 13, "#2b2f3a"); r(2, 2, 12, 11, "#1b2342"); r(2, 8, 12, 5, "#222c52");
-    r(3, 7, 3, 6, "#121729"); r(7, 5, 3, 8, "#151b30"); r(11, 8, 3, 5, "#121729");
-    for (const [x, y, c] of [[4, 8, P.warm], [8, 6, P.warm], [8, 9, "#9fd3ff"], [12, 9, P.warm], [4, 11, "#9fd3ff"]] as const) r(x, y, 1, 1, c);
-    r(5, 3, 1, 1, "#ffffff"); r(8, 1, 1, 13, "#2b2f3a"); r(1, 14, 14, 1, "#9aa0ad");
+    r(1, 1, 14, 13, "#6e5440"); r(2, 2, 12, 11, "#a9dcff"); r(2, 8, 12, 5, "#c4e7ff");
+    r(3, 9, 3, 4, "#b3c3d4"); r(7, 7, 3, 6, "#c0cedc"); r(11, 10, 2, 3, "#b3c3d4");
+    r(3, 4, 4, 1, "#ffffff"); r(4, 3, 2, 1, "#ffffff"); r(10, 5, 3, 1, "#f2fbff");
+    r(8, 1, 1, 13, "#6e5440"); r(1, 14, 14, 1, "#d8c8a8");
   },
   [G.GLASS]: (r) => {                                            // 유리 파티션
     r(0, 0, 16, 16, "rgba(160,205,240,0.16)"); r(0, 0, 16, 1, "#9aa7b8"); r(0, 15, 16, 1, "#7d8798");
@@ -138,8 +141,8 @@ const DRAW: Record<number, (r: R) => void> = {
     r(6, 3, 4, 1, "#e0c070"); r(6, 10, 4, 1, "#e0c070"); r(1, 7, 14, 1, "#7a5236"); shadow(r, 1, 15, 14);
   },
   [G.STANDBOARD]: (r) => { r(0, 1, 16, 10, "#b8bec9"); r(1, 2, 14, 8, "#f4f6f9"); r(2, 3, 6, 1, "#3d6fb0"); r(2, 5, 9, 1, "#c0504d"); r(10, 3, 3, 3, "#ffd166"); r(3, 11, 1, 4, P.steelDk); r(12, 11, 1, 4, P.steelDk); shadow(r, 2, 15, 12); },
-  [G.LAB]: (r) => {                                              // 연구실: 연한 리놀륨 바닥
-    r(0, 0, 16, 16, "#a99a86"); r(0, 15, 16, 1, "#978874"); r(15, 0, 1, 16, "#978874"); r(0, 0, 16, 1, "#b5a792"); r(4, 5, 1, 1, "#b2a48f"); r(11, 10, 1, 1, "#9f907b");
+  [G.LAB]: (r) => {                                              // 연구실: 밝은 리놀륨
+    r(0, 0, 16, 16, "#cfc6b5"); r(0, 15, 16, 1, "#c0b6a4"); r(15, 0, 1, 16, "#c0b6a4"); r(0, 0, 16, 1, "#d9d1c2"); r(4, 5, 1, 1, "#d6cebf"); r(11, 10, 1, 1, "#c7bdab");
   },
   [G.TROPHY]: (r) => {                                           // 완료 트로피 받침대
     r(3, 10, 10, 5, "#6e4a32"); r(3, 10, 10, 1, "#835a3e"); shadow(r, 3, 15, 10);
@@ -148,11 +151,47 @@ const DRAW: Record<number, (r: R) => void> = {
   [G.ELEVATOR]: (r) => {                                         // 엘리베이터 문 (벽)
     DRAW[G.FACE](r); r(2, 0, 12, 16, "#5a5560"); r(3, 1, 10, 15, "#8a8590"); r(7.5, 1, 1, 15, "#5a5560"); r(6, 0, 4, 1, "#ffd98a");
   },
+  [G.STEEL]: (r) => {                                            // 서버실: 줄무늬 철판
+    r(0, 0, 16, 16, "#a9afb7"); r(0, 0, 16, 1, "#bcc1c8"); r(0, 15, 16, 1, "#959ba3"); r(15, 0, 1, 16, "#959ba3");
+    for (let y = 2; y < 15; y += 4) for (let x = (y % 8 === 2 ? 2 : 6); x < 15; x += 8) { r(x, y, 3, 1, "#c6cbd2"); r(x + 1, y + 1, 3, 1, "#959ba3"); }
+  },
+  [G.DOOR]: (r) => {                                             // 문틀 + 문턱 (위에서 본 문)
+    r(0, 0, 16, 16, "#b98a5e"); r(0, 4, 16, 1, "#a1744c"); r(0, 9, 16, 1, "#a1744c"); r(0, 14, 16, 1, "#a1744c");
+    r(0, 0, 3, 16, "#5a3c28"); r(13, 0, 3, 16, "#5a3c28"); r(1, 0, 1, 16, "#7a5236"); r(14, 0, 1, 16, "#7a5236");
+    r(3, 7, 10, 2, "#8a6a4c");
+  },
+  [G.DOOR_FACE]: (r) => {                                        // 앞벽에 난 문: 문틀 + 활짝 열린 문짝
+    r(0, 0, 16, 16, "#b98a5e"); r(0, 5, 16, 1, "#a1744c"); r(0, 11, 16, 1, "#a1744c");
+    r(0, 0, 16, 3, "#5a3c28"); r(0, 0, 2, 16, "#5a3c28"); r(14, 0, 2, 16, "#5a3c28"); r(0, 2, 16, 1, "#7a5236");
+    r(2, 3, 3, 13, "#8a5e3e"); r(2, 3, 1, 13, "#a87450"); r(4, 9, 1, 1, "#e0c070");
+  },
+  [G.PRINTER]: (r) => {                                          // 복합기
+    r(1, 4, 14, 10, "#d9dce2"); r(1, 4, 14, 1, "#eceef2"); r(2, 1, 12, 4, "#c5c9d2"); r(3, 2, 10, 1, "#f4f6f9");
+    r(3, 7, 10, 2, "#5d636f"); r(4, 8, 8, 1, "#f4f6f9"); r(11, 11, 2, 1, "#5fe08a"); r(1, 14, 14, 1, "#9aa0ad"); shadow(r, 1, 15, 14);
+  },
+  [G.WATER]: (r) => {                                            // 정수기
+    r(4, 0, 8, 6, "#a9dcff"); r(5, 1, 2, 4, "#d2efff"); r(3, 6, 10, 9, "#eceef2"); r(3, 6, 10, 1, "#ffffff");
+    r(5, 9, 2, 2, "#3d6fb0"); r(9, 9, 2, 2, "#c0504d"); r(4, 13, 8, 1, "#c5c9d2"); shadow(r, 3, 15, 10);
+  },
+  [G.LEAD_T]: (r) => {                                           // 팀장 책상(세로) 위쪽: 모니터가 오른쪽(앉은 사람)을 봄
+    r(2, 1, 12, 15, P.white); r(2, 1, 12, 1, "#d8a878"); r(13, 1, 1, 15, P.whiteSide); r(2, 1, 1, 15, P.whiteLine);
+    r(4, 4, 3, 9, P.black); r(6, 5, 1, 7, P.screen); r(6, 5, 1, 2, P.screenHi); r(3, 8, 1, 2, P.steelDk); r(9, 6, 3, 2, "#f4f6f9");
+  },
+  [G.LEAD_B]: (r) => {                                           // 팀장 책상 아래쪽: 키보드·서류
+    r(2, 0, 12, 13, P.white); r(13, 0, 1, 13, P.whiteSide); r(2, 0, 1, 13, P.whiteLine); r(2, 13, 12, 2, P.whiteSide); shadow(r, 2, 15, 12);
+    r(8, 2, 2, 6, "#c9ccd3"); r(4, 8, 4, 3, "#f4f6f9"); r(5, 9, 2, 1, "#9aa0ad"); r(10, 10, 2, 2, "#ffffff");
+  },
+  [G.CHAIR_L]: (r) => {                                          // 왼쪽을 보는 의자 (등받이가 오른쪽)
+    r(3, 5, 7, 6, "#4a777b"); r(3, 5, 7, 1, "#5a8a8e"); r(10, 2, 3, 11, "#3f6a6e"); r(11, 3, 1, 9, "#4f7e82");
+    r(6, 11, 2, 2, "#3a2a24"); r(4, 13, 7, 1, "#3a2a24"); shadow(r, 4, 14, 8);
+  },
+  [G.CHAIR_BACK]: (r) => { r(4, 6, 8, 6, "#3f6a6e"); r(5, 7, 6, 1, "#4f7e82"); },   // CHAIR_UP 의 등받이 부분과 같은 자리
+  [G.VOID]: (r) => { r(0, 0, 16, 16, "#3a2e2a"); r(3, 5, 1, 1, "#43362f"); r(11, 12, 1, 1, "#43362f"); },
   [G.LAMP]: (r) => { r(4, 1, 8, 4, P.warm); r(5, 0, 6, 1, "#ffe7b0"); r(7, 5, 2, 8, P.steelDk); r(5, 13, 6, 2, P.black); shadow(r, 5, 15, 6); },
 };
 
 const OUTLINED = [G.DESK, G.DESK_UP, G.LAPTOP_DESK, G.CHAIR, G.CHAIR_UP, G.SHELF, G.SHELF_TOP, G.RACK, G.RACK_TOP, G.PLANT, G.PLANT_TOP,
-  G.SOFA, G.BED_TOP, G.BED_BOT, G.CAFE_TABLE, G.COFFEE, G.BENCH, G.GLOBE, G.CABINET, G.MTABLE, G.COUNTER, G.STANDBOARD, G.LAMP, G.TROPHY];
+  G.SOFA, G.BED_TOP, G.BED_BOT, G.CAFE_TABLE, G.COFFEE, G.BENCH, G.GLOBE, G.CABINET, G.MTABLE, G.COUNTER, G.STANDBOARD, G.LAMP, G.TROPHY, G.PRINTER, G.WATER, G.LEAD_T, G.LEAD_B, G.CHAIR_L, G.CHAIR_BACK];
 
 // 벽에 거는 것: 벽면을 먼저 깔고 그 위에 에셋 타일을 얹는다
 const ON_WALL = new Set<number>([G.WINDOW, G.BOSSDOOR]);
@@ -160,25 +199,35 @@ const ON_WALL = new Set<number>([G.WINDOW, G.BOSSDOOR]);
 /** 외부 에셋 타일셋: public/tiles/<name>.png + .map.json (이름 → 인덱스). 지금은 사용 안 함 */
 export interface AssetTiles { img: HTMLImageElement | HTMLCanvasElement; index: Record<string, number> }
 
+// 벽 윗면 오토타일 16종: 바닥과 닿은 방향(N1 E2 S4 W8)에만 진한 테두리 + 안쪽 하이라이트 → 높이감
+for (let m = 0; m < 16; m++) DRAW[G.WALLTOP + m] = (r) => {
+  r(0, 0, 16, 16, "#cbb89a"); r(4, 4, 1, 1, "#c2ae8f"); r(11, 9, 1, 1, "#c2ae8f"); r(7, 13, 1, 1, "#d4c3a8");
+  if (m & 1) { r(0, 0, 16, 2, "#8a7055"); r(0, 2, 16, 1, "#dfd0b5"); }
+  if (m & 4) { r(0, 14, 16, 2, "#8a7055"); r(0, 13, 16, 1, "#dfd0b5"); }
+  if (m & 8) { r(0, 0, 2, 16, "#8a7055"); r(2, 0, 1, 16, "#dfd0b5"); }
+  if (m & 2) { r(14, 0, 2, 16, "#8a7055"); r(13, 0, 1, 16, "#dfd0b5"); }
+};
+
 /**
- * 타일셋을 캔버스에 그려 돌려준다 (가로 한 줄, GID 순서).
+ * 타일셋을 캔버스에 그려 돌려준다 (16칸 격자, GID 순서).
  * 에셋에 같은 이름의 타일이 있으면 에셋을, 없으면 코드로 그린 타일을 쓴다.
  */
 export function makeTilesetCanvas(assets?: AssetTiles | null): HTMLCanvasElement {
   const c = document.createElement("canvas");
-  c.width = TILE * TILE_COUNT; c.height = TILE;
+  c.width = TILE * TILE_COLS; c.height = TILE * Math.ceil(TILE_COUNT / TILE_COLS);
   const ctx = c.getContext("2d")!;
   const nameOf = Object.fromEntries(Object.entries(G).map(([k, v]) => [v, k])) as Record<number, string>;
   for (let gid = 1; gid <= TILE_COUNT; gid++) {
-    const ox = (gid - 1) * TILE;
-    const r: R = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(ox + x, y, w, h); };
+    const ox = ((gid - 1) % TILE_COLS) * TILE, oy = Math.floor((gid - 1) / TILE_COLS) * TILE;
+    const r: R = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(ox + x, oy + y, w, h); };
     const ai = assets?.index[nameOf[gid]];
     if (ai == null) { DRAW[gid]?.(r); continue; }
     if (ON_WALL.has(gid)) DRAW[G.FACE](r);
-    ctx.drawImage(assets!.img, ai * TILE, 0, TILE, TILE, ox, 0, TILE, TILE);
+    ctx.drawImage(assets!.img, ai * TILE, 0, TILE, TILE, ox, oy, TILE, TILE);
   }
-  if (assets?.index.PLANT != null) ctx.clearRect((G.PLANT_TOP - 1) * TILE, 0, TILE, TILE);
+  const pos = (gid: number) => [((gid - 1) % TILE_COLS) * TILE, Math.floor((gid - 1) / TILE_COLS) * TILE] as const;
+  if (assets?.index.PLANT != null) ctx.clearRect(...pos(G.PLANT_TOP), TILE, TILE);
   // 가구에 진한 외곽선 (바닥·벽은 제외)
-  for (const gid of OUTLINED) outlineRegion(ctx, (gid - 1) * TILE, 0, TILE, TILE);
+  for (const gid of OUTLINED) outlineRegion(ctx, ...pos(gid), TILE, TILE);
   return c;
 }

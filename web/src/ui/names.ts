@@ -22,14 +22,14 @@ export function rankOf(toolCount = 0) {
 
 /** 지금 맡은 역할 (구역 기준) */
 export const ROLE: Record<string, string> = {
-  dev: "개발팀", gh: "GitHub 개발본부", plan: "기획팀", research: "연구팀", lib: "자료 조사", srv: "서버 운영",
-  meet: "회의 중", ceo: "결재 대기", cafe: "휴식", nap: "수면", standup: "스탠드업",
+  think: "생각 정리", dev: "코딩", lib: "자료 찾기", srv: "명령 실행", research: "웹 조사", meet: "서브에이전트 회의",
+  gh: "GitHub 출장", plan: "Notion 출장", obsidian: "Obsidian 출장", ceo: "결재 대기", cafe: "휴식", nap: "수면", standup: "스탠드업",
 };
 
 /** 역할 별명: 지금 있는 부서에 맞춰 (같은 별명이 여럿이면 뒤에 번호) */
 export const NICK: Record<string, string> = {
-  dev: "개발이", gh: "깃돌이", plan: "기획이", research: "연구리", lib: "책벌레", srv: "서버지기",
-  meet: "고민이", ceo: "결재대기", cafe: "커피러", nap: "잠꾸러기", standup: "회의러",
+  think: "고민이", dev: "개발이", gh: "깃돌이", plan: "기획이", research: "조사리", obsidian: "노트리", lib: "책벌레", srv: "서버지기",
+  meet: "회의러", ceo: "결재대기", cafe: "커피러", nap: "잠꾸러기", standup: "모임러",
 };
 /** B1 연구원 별명: 상태에 맞춰 */
 export const LAB_NICK: Record<string, string> = { working: "실험이", quiet: "고민이", sleep: "잠꾸러기", done: "박사님" };

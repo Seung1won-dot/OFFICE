@@ -32,8 +32,39 @@ routes["POST /api/snapshot"] = async (req, res) => {
   ctx.send(res, 200, { saved: `data/screens/${name}.png` });
 };
 
+// 개인용 캐릭터 스킨 목록 (로컬 전용, 저장소에 안 올라감): assets/third-party/skins/*.png, skins/<부서>/*.png
+// config.json 에서 "skins": false 로 끌 수 있다
+routes["GET /api/skins"] = (req, res) => {
+  if (loadConfig().skins === false) return ctx.send(res, 200, { files: [] });
+  const base = path.join(ROOT, "assets", "third-party", "skins"), files = [];
+  const isImg = (f) => /\.(png|webp)$/i.test(f);
+  try {
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      if (e.isFile() && isImg(e.name)) files.push({ url: `/third-party/skins/${encodeURIComponent(e.name)}`, dept: "" });
+      else if (e.isDirectory() && /^[\w-]+$/.test(e.name))
+        for (const f of fs.readdirSync(path.join(base, e.name))) if (isImg(f)) files.push({ url: `/third-party/skins/${e.name}/${encodeURIComponent(f)}`, dept: e.name });
+    }
+  } catch { /* 폴더 없음 = 스킨 안 씀 */ }
+  // skinCrop: "bust"(기본, 세로로 긴 전신 그림은 상반신만) | "full"
+  ctx.send(res, 200, { files, crop: loadConfig().skinCrop === "full" ? "full" : "bust" });
+};
+
+// Tiled 맵 내보내기 (개발용, 로컬 전용): 브라우저에서 /?export-map 을 열면 코드 맵을 web/public/maps 에 파일로 저장
+routes["POST /api/export-map"] = async (req, res) => {
+  try {
+    const { tmj, png, name = "office" } = JSON.parse(await ctx.readBody(req, 30e6));
+    const safe = String(name).replace(/[^\w-]/g, "");
+    const dir = path.join(ROOT, "web", "public", "maps"); fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${safe}.tmj`), JSON.stringify(tmj, null, 1));
+    const ts = { ...tmj.tilesets[0], type: "tileset", version: "1.10" }; delete ts.firstgid;
+    fs.writeFileSync(path.join(dir, `${safe}.tsj`), JSON.stringify(ts, null, 1));
+    fs.writeFileSync(path.join(dir, `${safe}-tiles.png`), Buffer.from(png.replace(/^data:image\/png;base64,/, ""), "base64"));
+    ctx.send(res, 200, { saved: [`web/public/maps/${safe}.tmj`, `${safe}.tsj`, `${safe}-tiles.png`] });
+  } catch (e) { ctx.send(res, 400, { error: e.message }); }
+};
+
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".png": "image/png", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".tsj": "application/json", ".tmj": "application/json" };
+  ".png": "image/png", ".webp": "image/webp", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".tsj": "application/json", ".tmj": "application/json" };
 
 function serveFile(res, root, urlPath) {
   const fp = path.join(root, path.normalize(urlPath).replace(/^(\.\.[/\\])+/, ""));

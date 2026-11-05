@@ -30,7 +30,7 @@ export async function showCard(info: CardInfo) {
   ctx.imageSmoothingEnabled = false;
   const src = info.scene.textures.get(info.spriteKey).getSourceImage() as HTMLCanvasElement;
   ctx.fillStyle = "#efe2c6"; ctx.fillRect(0, 0, 64, 96);
-  ctx.drawImage(src, 0, 0, 16, 24, 0, 0, 64, 96);
+  ctx.drawImage(src, 0, 0, 32, 32, 0, 24, 64, 64);
   root.hidden = false;
   const close = () => { root.hidden = true; window.removeEventListener("keydown", onKey); };
   const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };

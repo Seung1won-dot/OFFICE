@@ -5,27 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Claude Office</title>
   <style>
-    :root { --bg: #1c1517; --panel: #261d1d; --line: #3a2c28; --ink: #f6ead2; --muted: #a8968a; --accent: #e8875a; --chip: #33272a; }
-    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: "Galmuri11", ui-monospace, Menlo, monospace; overflow: hidden; }
+    :root { --bg: #1c1517; --panel: #261d1d; --line: #3a2c28; --ink: #f6ead2; --muted: #a8968a; --accent: #e8875a; --chip: #33272a;
+      /* 떠 있는 창(툴팁·사원증·부서 안내·로그) 공통 스타일 */
+      --pop-bg: #fbf3e2; --pop-ink: #2a1d1c; --pop-muted: #8a7a6e; --pop-line: #e6d8bd; --pop-border: 2px solid #2a1d1c; --pop-radius: 10px; --pop-shadow: 0 8px 24px rgba(0,0,0,.35); }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: "Galmuri11", ui-monospace, Menlo, monospace; -webkit-font-smoothing: none; overflow: hidden; }
     /* 기본(세로로 긴 창·화면 반쪽 분할): 위 = 맵, 아래 = 안내 */
-    #app { height: 100%; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: 1fr; }
+    #app { height: 100%; display: grid; grid-template-rows: auto 1fr; grid-template-columns: 1fr; }
     header { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--line); min-width: 0; }
     #floors { display: flex; gap: 4px; flex-shrink: 0; }
-    #floors button { font: inherit; font-size: 12px; color: var(--muted); background: var(--chip); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+    #floors button { font: inherit; font-size: 11px; color: var(--muted); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
     #floors button.on { color: #2a1d1c; background: var(--accent); border-color: var(--accent); }
-    #hud { font-size: 12px; color: #d9c9b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    #hud { font-size: 11px; color: #d9c9b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     #hud b { color: var(--accent); }
     #hud span { color: var(--muted); }
     #hud .warn { color: #ff6b5a; font-style: normal; }
     #stage { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    #game canvas { display: block; image-rendering: pixelated; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.45); }
-    #guide { background: var(--panel); border-top: 1px solid var(--line); padding: 10px 14px 12px; font-size: 12px; overflow: auto; max-height: 38vh; }
+    #game canvas { display: block; image-rendering: pixelated; }
+    /* 부서 안내: 평소엔 숨김, 상단 "부서 안내" 버튼이나 H 키로 맵 위에 작은 창 */
+    #guide { position: absolute; top: 10px; right: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 20px); overflow: auto; z-index: 15;
+      background: var(--pop-bg); color: var(--pop-ink); border: var(--pop-border); border-radius: var(--pop-radius); padding: 10px 12px 12px; font-size: 11px; box-shadow: var(--pop-shadow); display: none; }
+    #guide h2 small, #guide .z div span, #guide .keys, #guide #collectors { color: var(--pop-muted); }
+    #guide .z { border-bottom-color: var(--pop-line); }
+    #guide .z em { background: #efe4cf; color: var(--pop-muted); }
+    #guide .z em.on { background: var(--accent); color: var(--pop-ink); }
+    #guide .close { color: var(--pop-muted); }
+    #guide.open { display: block; }
+    #guide .close { position: absolute; top: 6px; right: 8px; font: inherit; font-size: 13px; color: var(--muted); background: none; border: 0; cursor: pointer; }
+    #guide .grid { grid-template-columns: 1fr !important; }
     #guide h2 { margin: 0 0 8px; font-size: 13px; letter-spacing: 1px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
     #guide h2 small { color: var(--muted); font-weight: normal; font-size: 11px; letter-spacing: 0; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 4px 14px; }
     .z { display: grid; grid-template-columns: 4px 1fr auto; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid #33282a; }
     .z i { width: 4px; height: 26px; border-radius: 2px; }
-    .z b { font-size: 12px; }
+    .z b { font-size: 11px; }
     .z div span { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
     .z em { font-style: normal; min-width: 22px; text-align: center; padding: 1px 6px; background: var(--chip); color: var(--muted); font-size: 11px; border-radius: 4px; }
     .z em.on { background: var(--accent); color: #2a1d1c; }
@@ -35,7 +47,7 @@
     .tools label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
     #collectors { margin-top: 8px; font-size: 11px; color: var(--muted); }
     #collectors .c-on { color: #86c060; } #collectors .c-absent, #collectors .c-error { color: #d6a748; } #collectors .c-off { color: #6e5e56; }
-    .keys { color: #6e5e56; font-size: 10px; margin-top: 8px; }
+    .keys { color: #6e5e56; font-size: 11px; margin-top: 8px; }
 
     /* 오른쪽 위: 토큰 위젯 + 토글 */
     #right { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
@@ -53,55 +65,49 @@
     @keyframes breathe { 0%,100% { opacity: .25; } 50% { opacity: .95; } }
     @keyframes hit { from { opacity: 1; } to { opacity: 0; } }
     /* 이벤트 로그 바 */
-    #log { position: absolute; left: 12px; bottom: 10px; max-width: min(560px, calc(100% - 24px)); z-index: 7; font-size: 11px; }
-    #log-toggle { font: inherit; font-size: 10px; color: var(--muted); background: #261d1dee; border: 1px solid var(--line); border-radius: 6px 6px 0 0; padding: 2px 8px; cursor: pointer; }
-    #log ul { list-style: none; margin: 0; padding: 4px 8px; background: #1c1517e6; border: 1px solid var(--line); border-radius: 0 8px 8px 8px; max-height: 0; overflow: hidden; transition: max-height .25s; }
-    #log.open ul { max-height: 160px; }
+    #log { position: absolute; left: 10px; bottom: 10px; max-width: min(420px, calc(100% - 20px)); z-index: 7; font-size: 11px; opacity: .9; transition: opacity .2s; }
+    #log:hover { opacity: 1; }
+    #log-toggle { font: inherit; font-size: 11px; color: var(--pop-ink); background: var(--pop-bg); border: var(--pop-border); border-bottom: 0; border-radius: 8px 8px 0 0; padding: 1px 8px; cursor: pointer; }
+    #log ul { list-style: none; margin: 0; padding: 4px 8px; background: rgba(251,243,226,.82); color: var(--pop-ink); border: var(--pop-border); border-radius: 0 var(--pop-radius) var(--pop-radius) var(--pop-radius); max-height: 0; overflow: hidden; transition: max-height .25s; box-shadow: var(--pop-shadow); }
+    #log.open ul { max-height: 90px; }
     #log:not(.open) ul { padding: 0 8px; border-width: 0; }
-    #log li { display: flex; gap: 6px; padding: 2px 0; color: #d9c9b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #log li:first-child { color: var(--ink); }
-    #log time { color: var(--muted); }
-    #log b { color: var(--accent); font-weight: normal; }
+    #log li { display: flex; gap: 6px; padding: 2px 0; color: var(--pop-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #log li:first-child { font-weight: bold; }
+    #log time { color: var(--pop-muted); }
+    #log b { color: #b8582f; font-weight: normal; }
     #log i { font-style: normal; width: 10px; text-align: center; }
-    #log .k-wait i, #log .k-wait b { color: #ffd166; }
-    #log .k-done i { color: #86c060; }
-    #log .empty { color: var(--muted); }
+    #log .k-wait i, #log .k-wait b { color: #b8862a; }
+    #log .k-done i { color: #4f8a3a; }
+    #log .empty { color: var(--pop-muted); }
     /* 사원증 카드 */
     #card { position: absolute; inset: 0; background: rgba(20,12,14,0.55); display: flex; align-items: center; justify-content: center; z-index: 20; cursor: pointer; }
     #card[hidden] { display: none; }
-    .badge { position: relative; width: 250px; background: #fbf3e2; color: #2a1d1c; border: 3px solid #2a1d1c; border-radius: 14px; padding: 18px 16px 12px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+    .badge { position: relative; width: 250px; background: var(--pop-bg); color: var(--pop-ink); border: var(--pop-border); border-radius: var(--pop-radius); padding: 18px 16px 12px; box-shadow: var(--pop-shadow); }
     .badge .strap { position: absolute; top: -40px; left: 50%; width: 22px; height: 46px; transform: translateX(-50%); background: var(--c); border: 2px solid #2a1d1c; border-radius: 4px; }
-    .badge .top { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 1px; background: var(--c); margin: -18px -16px 10px; padding: 6px 12px; border-radius: 10px 10px 0 0; font-weight: bold; }
+    .badge .top { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 1px; background: var(--c); margin: -18px -16px 10px; padding: 6px 12px; border-radius: 8px 8px 0 0; font-weight: bold; }
     .badge .body { display: flex; gap: 12px; align-items: center; }
     .badge canvas { width: 64px; height: 96px; image-rendering: pixelated; border: 2px solid #2a1d1c; border-radius: 6px; background: #efe2c6; }
-    .badge .who b { display: block; font-size: 18px; }
+    .badge .who b { display: block; font-size: 16px; }
     .badge .who em { display: inline-block; font-style: normal; font-size: 11px; background: var(--c); padding: 1px 6px; border-radius: 4px; margin: 3px 0; }
     .badge .who span { display: block; font-size: 11px; color: #6e5440; }
     .badge dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 11px; margin: 12px 0 8px; }
     .badge dt { color: #8a7a6e; } .badge dd { margin: 0; word-break: break-all; }
-    .badge strong { font-size: 14px; }
+    .badge strong { font-size: 13px; }
     .badge h4 { margin: 8px 0 4px; font-size: 11px; color: #8a7a6e; }
     .badge ol { margin: 0; padding-left: 16px; font-size: 11px; }
     .badge ol li { margin: 2px 0; } .badge ol small { color: #8a7a6e; margin-left: 4px; }
-    .badge .foot { margin-top: 10px; font-size: 9px; color: #a8968a; text-align: center; }
+    .badge .foot { margin-top: 10px; font-size: 11px; color: #a8968a; text-align: center; }
     /* 커서를 올리면 뜨는 말풍선 */
     #bubble { position: absolute; display: none; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none; z-index: 10;
-      background: #fbf3e2; color: #2a1d1c; border: 2px solid #2a1d1c; border-radius: 10px; padding: 7px 10px; font-size: 12px; line-height: 1.5;
-      max-width: 260px; min-width: 120px; box-shadow: 0 6px 18px rgba(0,0,0,0.35); }
+      background: var(--pop-bg); color: var(--pop-ink); border: var(--pop-border); border-radius: var(--pop-radius); padding: 8px 10px; font-size: 11px; line-height: 1.5;
+      max-width: 260px; min-width: 120px; box-shadow: var(--pop-shadow); }
     #bubble::after { content: ""; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); border: 7px solid transparent; border-top-color: #2a1d1c; border-bottom: 0; }
     #bubble::before { content: ""; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #fbf3e2; border-bottom: 0; z-index: 1; }
-    #bubble b { font-size: 12px; }
+    #bubble b { font-size: 11px; }
     #bubble .zone { margin-left: 6px; font-size: 11px; color: #8a5e3e; }
     #bubble i { font-style: normal; color: #8a5e3e; font-size: 11px; }
     #bubble div { margin-top: 2px; word-break: break-all; }
-    #bubble small { color: #8a7a6e; font-size: 10px; }
-    /* 가로로 넓은 창: 오른쪽에 안내 */
-    @media (min-aspect-ratio: 3/2) and (min-width: 1100px) {
-      #app { grid-template-columns: 1fr 270px; grid-template-rows: auto 1fr; }
-      header { grid-column: 1 / 3; }
-      #guide { grid-row: 2; grid-column: 2; border-top: 0; border-left: 1px solid var(--line); max-height: none; }
-      .grid { grid-template-columns: 1fr; }
-    }
+    #bubble small { color: #8a7a6e; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -111,6 +117,7 @@
       <div id="hud">불러오는 중…</div>
       <div id="right">
         <div id="tokens" title="토큰 사용량 (이 컴퓨터의 Claude Code 기록 기준)"></div>
+        <button id="btn-guide" class="tog" title="부서 안내 열기/닫기 (H)">📋 부서 안내</button>
         <button id="btn-alerts" class="tog"></button>
         <button id="btn-typing" class="tog"></button>
       </div>
@@ -118,25 +125,25 @@
     <main id="stage"><div id="game"></div>
       <div id="log"><button id="log-toggle"></button><ul></ul></div>
       <div id="card" hidden></div>
+      <aside id="guide"><button class="close" id="guide-close" title="닫기 (H)">✕</button>
+        <section id="zones-panel">
+          <h2>부서 안내 <small>세션이 하는 일에 따라 그 부서로 걸어가요 · 캐릭터에 커서를 올리면 하는 일이 보여요</small></h2>
+          <div id="zones" class="grid"></div>
+          <div id="collectors" class="keys"></div>
+          <div class="keys">H 안내 닫기 · Tab 층 전환 · 숫자키 1~9 첫 직원 보내기 · F 전체화면</div>
+        </section>
+        <section id="research-panel" hidden>
+          <h2>연구실 <small>research-log 기록을 읽어서 보여줘요 (수정하지 않음)</small></h2>
+          <div id="research-list" class="grid"></div>
+          <div class="tools">
+            <button id="draft-btn">이번 주 로그 초안 만들기</button>
+            <label><input type="checkbox" id="public-toggle"> 공개 모드 (프로젝트명 익명화)</label>
+            <span id="draft-out"></span>
+          </div>
+          <div class="keys">Tab 층 전환 · 방이나 연구원에 커서를 올리면 기록 상태가 보여요</div>
+        </section>
+      </aside>
     </main>
-    <aside id="guide">
-      <section id="zones-panel">
-        <h2>부서 안내 <small>세션이 하는 일에 따라 그 부서로 걸어가요 · 캐릭터에 커서를 올리면 하는 일이 보여요</small></h2>
-        <div id="zones" class="grid"></div>
-        <div id="collectors" class="keys"></div>
-        <div class="keys">Tab 층 전환 · 숫자키 1~9 첫 직원 보내기 · F 전체화면</div>
-      </section>
-      <section id="research-panel" hidden>
-        <h2>연구실 <small>research-log 기록을 읽어서 보여줘요 (수정하지 않음)</small></h2>
-        <div id="research-list" class="grid"></div>
-        <div class="tools">
-          <button id="draft-btn">이번 주 로그 초안 만들기</button>
-          <label><input type="checkbox" id="public-toggle"> 공개 모드 (프로젝트명 익명화)</label>
-          <span id="draft-out"></span>
-        </div>
-        <div class="keys">Tab 층 전환 · 방이나 연구원에 커서를 올리면 기록 상태가 보여요</div>
-      </section>
-    </aside>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>

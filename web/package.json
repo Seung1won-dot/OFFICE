@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "easystarjs": "^0.4.4",
+    "galmuri": "^2.40.3",
     "phaser": "^3.90.0"
   },
   "devDependencies": {

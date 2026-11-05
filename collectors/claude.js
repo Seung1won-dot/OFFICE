@@ -123,6 +123,7 @@ function summarize(file) {
   let title = null, cwd = null, model = null, lastPrompt = null;
   let last = null, toolCount = 0;
   const pending = new Map();   // 결과를 아직 못 받은 tool_use
+  let errAt = null;            // 마지막 도구 결과가 에러였던 시각
   for (const o of ev) {
     if (o.type === "custom-title") title = o.customTitle;
     if (o.type === "agent-name" && !title) title = o.agentName;
@@ -142,7 +143,7 @@ function summarize(file) {
       else if (Array.isArray(c)) {
         let res = false;
         for (const b of c) {
-          if (b.type === "tool_result") { res = true; pending.delete(b.tool_use_id); }
+          if (b.type === "tool_result") { res = true; pending.delete(b.tool_use_id); errAt = b.is_error ? Date.parse(o.timestamp) || Date.now() : null; }
           else if (b.type === "text" && !b.text.startsWith("<")) last = { kind: "prompt", text: b.text };
         }
         if (res && last?.kind === "tool") last = { ...last, kind: "toolDone" };
@@ -183,6 +184,7 @@ function summarize(file) {
     state, activity, detail,
     tool: shortTool(lastTool),
     toolFull: lastTool || "",
+    error: !!errAt && Date.now() - errAt < 90000 && state === "working",   // 방금 도구가 에러를 냄 → 땀방울
     activeSubagents: ageSec < 600 ? [...pending.values()].filter(b => /^(Agent|Task)$/.test(b.name)).length : 0,
     toolCount: Math.max(toolCount, fsx.tools),
     tokensToday: fsx.tokensByDay[dayKey(Date.now())] || 0,

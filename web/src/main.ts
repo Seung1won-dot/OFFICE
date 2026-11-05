@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import "./ui/font";   // 픽셀 글꼴 미리 불러오기
 import { OfficeScene } from "./scenes/OfficeScene";
 import { ResearchScene, isPublicMode } from "./scenes/ResearchScene";
 import { hideBubble } from "./ui/bubble";
@@ -17,6 +18,7 @@ const game = new Phaser.Game({
   scale: { mode: Phaser.Scale.NONE, width: 640, height: 480 },
   scene: [OfficeScene, ResearchScene],
 });
+(window as unknown as { __office: Phaser.Game }).__office = game;   // 성능 점검·디버깅용
 
 // ── 층 전환 탭: 1F 사무실 / B1 연구실 ──
 let floor: "office" | "research" = "office";
@@ -102,3 +104,53 @@ window.addEventListener("pointermove", () => { touchedAt = Date.now(); });
   try { sec = Number((await (await fetch("/api/config")).json()).research?.floorRotateSec) || 0; } catch { /* */ }
   if (sec > 0) setInterval(() => { if (Date.now() - touchedAt > 30000) go(floor === "office" ? "research" : "office"); }, sec * 1000);
 })();
+
+// ── 개발용: /?export-map → 코드로 만든 맵을 Tiled 파일(web/public/maps/office.tmj + 타일셋 png)로 저장 ──
+if (new URLSearchParams(location.search).has("export-map")) {
+  (async () => {
+    const { buildDefaultMap } = await import("./map/defaultMap");
+    const { makeTilesetCanvas } = await import("./gfx/tileset");
+    const r = await fetch("/api/export-map", { method: "POST", body: JSON.stringify({ tmj: buildDefaultMap(), png: makeTilesetCanvas(null).toDataURL("image/png") }) });
+    const j = await r.json();
+    document.getElementById("hud")!.textContent = j.saved ? `Tiled 맵 저장: ${j.saved.join(", ")}` : `저장 실패: ${j.error}`;
+  })();
+}
+
+// ── 개발용: /?monster-sheet → 몬스터 직원 미리보기 시트를 data/screens/monster-sheet.png 로 저장 ──
+if (new URLSearchParams(location.search).has("monster-sheet")) {
+  (async () => {
+    const { makePreviewSheet } = await import("./gfx/monsters");
+    const url = makePreviewSheet().toDataURL("image/png");
+    const r = await fetch("/api/snapshot?name=monster-sheet", { method: "POST", body: url });
+    document.getElementById("hud")!.textContent = `미리보기 저장: ${(await r.json()).saved}`;
+  })();
+}
+
+// ── 부서 안내 창: 상단 버튼 또는 H 키로 열고 닫기 ──
+const guide = document.getElementById("guide")!, gbtn = document.getElementById("btn-guide")!;
+function toggleGuide(open = !guide.classList.contains("open")) { guide.classList.toggle("open", open); gbtn.classList.toggle("on", open); }
+gbtn.addEventListener("click", () => toggleGuide());
+document.getElementById("guide-close")!.addEventListener("click", () => toggleGuide(false));
+window.addEventListener("keydown", (e) => { if ((e.key === "h" || e.key === "H" || e.key === "ㅗ") && !(e.target instanceof HTMLInputElement)) toggleGuide(); });
+
+// ── /?skin-preview → 개인용 스킨 그림이 배경 지우기 후 어떻게 보이는지 한 화면에 (원본 · 다듬은 그림 · 32px 실제 크기) ──
+if (new URLSearchParams(location.search).has("skin-preview")) {
+  import("./gfx/skins").then(async ({ loadSkins, prepare, skinName }) => {
+    const set = await loadSkins();
+    const imgs = set ? [...set.all, ...Object.values(set.by).flat()] : [];
+    const box = document.createElement("div");
+    box.style.cssText = "position:fixed;inset:0;z-index:99;overflow:auto;background:#d8c9a8;display:flex;flex-wrap:wrap;gap:8px;padding:12px;font:11px Galmuri11,sans-serif";
+    for (const im of imgs) {
+      const c = prepare(im, set!.crop), s = Math.min(96 / c.width, 96 / c.height), t = Math.min(30 / c.width, 30 / c.height);
+      const cell = document.createElement("div"); cell.style.cssText = "background:#8f94a8;padding:4px;text-align:center;width:150px";
+      const big = document.createElement("canvas"); big.width = Math.round(c.width * s); big.height = Math.round(c.height * s);
+      big.getContext("2d")!.drawImage(c, 0, 0, big.width, big.height);
+      const small = document.createElement("canvas"); small.width = 32; small.height = 32; small.style.cssText = "width:64px;height:64px;image-rendering:pixelated";
+      small.getContext("2d")!.drawImage(c, (32 - c.width * t) / 2, 31 - c.height * t, c.width * t, c.height * t);
+      cell.append(big, small, Object.assign(document.createElement("div"), { textContent: skinName(im) || "(이름 없음)" }));
+      box.append(cell);
+    }
+    if (!imgs.length) box.textContent = "skins 폴더에 그림이 없어요";
+    document.body.append(box);
+  });
+}

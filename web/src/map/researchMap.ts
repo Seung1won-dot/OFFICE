@@ -1,6 +1,6 @@
 // B1 연구실 층 맵 (1층과 같은 Tiled JSON 구조·타일셋 재사용)
 // 위: 라운지(엘리베이터·주간 로그 게시판) / 아래: 프로젝트마다 방 하나 (한 줄에 3개)
-import { G, TILE, TiledObject, BLOCKING } from "./defaultMap";
+import { G, TILE, TiledObject, BLOCKING, autotileWalls, tilesetJson } from "./defaultMap";
 
 export const RW = 48;
 const ROOM_W = 16, ROOM_H = 9, PER_ROW = 3, LOUNGE_H = 7;
@@ -41,7 +41,7 @@ export function buildResearchMap(count: number) {
     carve(x0, y0 + 1, x1, y0 + ROOM_H - 1, G.LAB); face(x0, x1, y0 + 1);
     room(`lab_${i}`, "", x0, y0 + 1, x1, y0 + ROOM_H - 1);
     // 문 (라운지/위 방과 연결된 느낌만)
-    for (const dx of [6, 7]) { walls[idx(x0 + dx, y0)] = 0; walls[idx(x0 + dx, y0 + 1)] = 0; floor[idx(x0 + dx, y0)] = G.MAT; floor[idx(x0 + dx, y0 + 1)] = G.MAT; }
+    for (const dx of [6, 7]) { walls[idx(x0 + dx, y0)] = 0; walls[idx(x0 + dx, y0 + 1)] = 0; floor[idx(x0 + dx, y0)] = G.DOOR; floor[idx(x0 + dx, y0 + 1)] = G.DOOR_FACE; }
     walls[idx(x0 + 2, y0 + 1)] = G.WINDOW; walls[idx(x0 + 11, y0 + 1)] = G.WHITEBOARD;
     // 책장 · 책상 · 소파 · 트로피 · 화분
     for (const dx of [0, 1, 2]) { put(x0 + dx, y0 + 2, G.SHELF); }
@@ -54,11 +54,12 @@ export function buildResearchMap(count: number) {
   const collision = new Array<number>(N).fill(0);
   for (let i = 0; i < N; i++) if (walls[i] || BLOCKING.has(furn[i])) collision[i] = 1;
   const layer = (id: number, name: string, data: number[], visible = true) => ({ id, name, type: "tilelayer", width: RW, height: MH, x: 0, y: 0, opacity: 1, visible, data });
+  const wallsTiled = autotileWalls(walls, RW, MH);
   return {
     type: "map", version: "1.10", orientation: "orthogonal", renderorder: "right-down", width: RW, height: MH, tilewidth: TILE, tileheight: TILE, infinite: false,
-    layers: [layer(1, "floor", floor), layer(2, "walls", walls), layer(3, "furniture", furn), layer(4, "furniture-top", top), layer(5, "collision", collision, false),
+    layers: [layer(1, "floor", floor), layer(2, "walls", wallsTiled), layer(3, "furniture", furn), layer(4, "furniture-top", top), layer(5, "collision", collision, false),
       { id: 6, name: "objects", type: "objectgroup", visible: true, opacity: 1, x: 0, y: 0, draworder: "topdown", objects },
       { id: 7, name: "rooms", type: "objectgroup", visible: true, opacity: 1, x: 0, y: 0, draworder: "topdown", objects: rooms }],
-    tilesets: [{ firstgid: 1, name: "office", tilewidth: TILE, tileheight: TILE, tilecount: 45, columns: 45, image: "office-tiles.png", imagewidth: TILE * 45, imageheight: TILE, margin: 0, spacing: 0 }],
+    tilesets: [tilesetJson()],
   };
 }

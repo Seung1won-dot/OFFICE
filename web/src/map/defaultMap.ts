@@ -1,19 +1,17 @@
 // 코드로 생성하는 기본 맵 (Tiled .tmj 와 같은 JSON 구조)
 // 레이어: floor / walls / furniture / furniture-top / collision + objectgroup(objects, rooms)
-// Tiled 로 만든 public/maps/office.tmj 가 있으면 그걸 우선 사용하고, 없으면 이 맵을 쓴다.
+// Tiled 로 만든 public/maps/office.tmj 가 있으면 그걸 우선 사용하고, 없으면 이 맵을 쓴다. (/?export-map 으로 다시 만들 수 있음)
 //
-// ┌────────┬────────┬────────┬────────┬────────┐
-// │대표실/  │ 유리    │ 자료실  │ 서버실  │ 수면실  │
-// │결재대기 │ 회의실  │(책장 벽)│        │        │
-// ├────────┴────────┴────────┴────────┴────────┤
-// │ [개발팀 섬]        [GitHub 개발본부 섬]       │
-// │ [기획팀 섬]  [연구팀 섬]      화이트보드(스탠드업) │
-// ├──────────────┬──────────────┬──────────────┤
-// │ 리셉션/입구   │ 탕비실·카페   │ 서류 캐비닛    │
-// └──────────────┴──────────────┴──────────────┘
+// ┌────────┬────────┬───────────────┬────────┐
+// │ 생각실  │ 자료실  │ 코딩실 (가장 큼) │ 터미널실 │
+// ├──── 복도 ─────────────────────────────────┤
+// │ 조사실  │ 회의실  │GitHub│Notion│Obsidian│통로
+// ├──── 복도 ─────────────────────────────────┤
+// │ 결재대기 │ 수면실  │   탕비실      │ 리셉션  │→ 출입구
+// └────────┴────────┴───────────────┴────────┘
 export const TILE = 16;
-export const MW = 48;
-export const MH = 32;
+export const MW = 40;
+export const MH = 29;
 
 // 생성 타일셋의 GID (tileset.ts 가 같은 순서로 그림)
 export const G = {
@@ -24,12 +22,32 @@ export const G = {
   MTABLE: 29, BOSSDOOR: 30, CLOCK: 31, LAMP: 32, RACK_TOP: 33, SHELF_TOP: 34, LAPTOP_DESK: 35, PLANT_TOP: 36,
   GLASS: 37, COUNTER: 38, STANDBOARD: 39, TEAL: 40, DESK_UP: 41, CHAIR_UP: 42,
   LAB: 43, TROPHY: 44, ELEVATOR: 45,
+  STEEL: 46, DOOR: 47, DOOR_FACE: 48, VOID: 49, WALLTOP: 50,   // WALLTOP ~ WALLTOP+15: 벽 윗면 오토타일 (바닥과 닿은 쪽에 테두리)
+  PRINTER: 66, WATER: 67, LEAD_T: 68, LEAD_B: 69, CHAIR_L: 70,   // 팀장 책상(세로) 위·아래, 왼쪽을 보는 의자
+  CHAIR_BACK: 71,   // 위를 보는 의자의 등받이만 (캐릭터 위에 덮어 그림)
 } as const;
-export const TILE_COUNT = 45;
+export const TILE_COUNT = 71;
+export const TILE_COLS = 16;   // 타일셋 이미지 가로 칸 수 (Tiled 에서 보기 편하게 격자로)
+
+/** 벽 칸을 "벽 윗면(바닥과 닿은 방향에 테두리)" 또는 "바깥(VOID)"으로 바꾼다 */
+export function autotileWalls(walls: number[], w: number, h: number) {
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? G.CAP : walls[y * w + x]);
+  const out = walls.slice();
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (walls[y * w + x] !== G.CAP) continue;
+    let near = false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (at(x + dx, y + dy) !== G.CAP) near = true;
+    if (!near) { out[y * w + x] = G.VOID; continue; }
+    const open = (xx: number, yy: number) => at(xx, yy) === 0;
+    const mask = (open(x, y - 1) ? 1 : 0) | (open(x + 1, y) ? 2 : 0) | (open(x, y + 1) ? 4 : 0) | (open(x - 1, y) ? 8 : 0);
+    out[y * w + x] = G.WALLTOP + mask;
+  }
+  return out;
+}
 
 // 길을 막는 가구 (좌석·벤치·침대 머리·의자는 POI 라서 통과 가능)
 const BLOCKING = new Set<number>([G.DESK, G.DESK_UP, G.SHELF, G.RACK, G.PLANT, G.CAFE_TABLE, G.COFFEE, G.GLOBE, G.CABINET,
-  G.MTABLE, G.BED_BOT, G.LAPTOP_DESK, G.LAMP, G.COUNTER, G.STANDBOARD, G.TROPHY]);
+  G.MTABLE, G.BED_BOT, G.LAPTOP_DESK, G.LAMP, G.COUNTER, G.STANDBOARD, G.TROPHY, G.PRINTER, G.WATER, G.LEAD_T, G.LEAD_B]);
 export { BLOCKING };
 
 interface Prop { name: string; type: string; value: string | number | boolean }
@@ -65,126 +83,159 @@ export function buildDefaultMap() {
     rooms.push({ id: oid++, name: key, type: "room", x: x0 * TILE, y: y0 * TILE, width: (x1 - x0 + 1) * TILE, height: (y1 - y0 + 1) * TILE,
       properties: [{ name: "label", type: "string", value: label }] });
   };
-  const door = (x: number, rows: number[]) => { for (const y of rows) for (const dx of [0, 1]) { walls[idx(x + dx, y)] = 0; floor[idx(x + dx, y)] = G.MAT; } };
-  /** 마주보는 책상 섬: 위 줄 책상(y)·아래 줄 책상(y+1), 좌석은 y-1(아래를 봄)과 y+2(위를 봄) */
-  const island = (prefix: string, xs: number[], y: number, deskTop: number = G.DESK, start = 1) => {
+  const door = (x: number, rows: number[]) => { rows.forEach((y, i) => { for (const dx of [0, 1]) { walls[idx(x + dx, y)] = 0; floor[idx(x + dx, y)] = i === 0 ? G.DOOR : G.DOOR_FACE; } }); };
+  /** 책상 pod: 위 줄 책상(y)·아래 줄 책상(y+1)이 마주 보고, 가운데 낮은 파티션. 좌석은 y-1(아래를 봄)과 y+2(위를 봄).
+   *  lead=true 면 pod 오른쪽 끝에 세로 팀장 책상 + 왼쪽(팀원 쪽)을 보는 의자 */
+  const island = (prefix: string, xs: number[], y: number, deskTop: number = G.DESK, start = 1, lead = false) => {
     let n = start;
-    for (const x of xs) { put(x, y, deskTop); put(x, y - 1, G.CHAIR); poi(`${prefix}_${n++}`, x, y - 1, "down", "sit"); }
-    for (const x of xs) { put(x, y + 1, G.DESK_UP); put(x, y + 2, G.CHAIR_UP); poi(`${prefix}_${n++}`, x, y + 2, "up", "sit"); }
+    // 앉은 사람 앞에 오는 것(위 줄 책상 앞면, 아래 줄 의자 등받이)은 furniture-top 에도 그려서 캐릭터를 자연스럽게 가림
+    for (const x of xs) { put(x, y, deskTop); putTop(x, y, deskTop); put(x, y - 1, G.CHAIR); poi(`${prefix}_${n++}`, x, y - 1, "down", "sit"); }
+    for (const x of xs) { put(x, y + 1, G.DESK_UP); put(x, y + 2, G.CHAIR_UP); putTop(x, y + 2, G.CHAIR_BACK); poi(`${prefix}_${n++}`, x, y + 2, "up", "sit"); }
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    objects.push({ id: oid++, name: "partition", type: "partition", x: x0 * TILE + 1, y: (y + 1) * TILE - 2, width: (x1 - x0 + 1) * TILE - 2, height: 4 });
+    if (lead) {
+      put(x1 + 1, y, G.LEAD_T); put(x1 + 1, y + 1, G.LEAD_B);
+      put(x1 + 2, y, G.CHAIR_L); poi(`${prefix}_${n++}`, x1 + 2, y, "left", "sit");
+    }
     return n;
   };
 
-  // ── 위쪽 방 5개 (0행 벽, 1행 뒷벽, 2~7행 바닥, 8행 아래벽에 문) ──
-  const TOP = [
-    { k: "ceo", n: "대표실·결재대기", x0: 1, x1: 9, f: G.BEIGE },
-    { k: "meet", n: "유리 회의실", x0: 11, x1: 18, f: G.PURPLE },
-    { k: "lib", n: "자료실", x0: 20, x1: 28, f: G.WOOD },
-    { k: "srv", n: "서버실", x0: 30, x1: 37, f: G.GRID },
-    { k: "nap", n: "수면실", x0: 39, x1: 46, f: G.NAP },
-  ] as const;
-  for (const r of TOP) { carve(r.x0, 1, r.x1, 7, r.f); face(r.x0, r.x1, 1); room(r.k, r.n, r.x0, 1, r.x1, 7); door(r.x0 + 3, [8]); }
-  // 유리 회의실: 벽이 유리
-  for (let y = 0; y <= 8; y++) { if (walls[idx(10, y)]) setWall(10, y, G.GLASS); if (walls[idx(19, y)]) setWall(19, y, G.GLASS); }
-  for (let x = 11; x <= 18; x++) if (walls[idx(x, 8)]) setWall(x, 8, G.GLASS);
-  face(11, 18, 1, G.GLASS);
-  for (let i = 0; i < N; i++) if (walls[i] === G.GLASS) floor[i] = G.PURPLE;   // 유리 너머로 바닥이 보이게
+  // ── 행 구성: 1줄 방(위벽 0·뒷벽 1·바닥 2~7·아래벽 8) / 복도 9~10 / 2줄 방(위벽 11·뒷벽 12·바닥 13~17·아래벽 18) / 복도 19~20 / 3줄 방(위벽 21·뒷벽 22·바닥 23~27·아래벽 28) ──
+  const R1 = { face: 1, f0: 2, f1: 7 }, R2 = { face: 12, f0: 13, f1: 17 }, R3 = { face: 22, f0: 23, f1: 27 };
+  type Row = typeof R1;
+  const makeRoom = (key: string, label: string, row: Row, x0: number, x1: number, f: number, doorX: number) => {
+    carve(x0, row.face, x1, row.f1, f); face(x0, x1, row.face); room(key, label, x0, row.face, x1, row.f1);
+    if (row === R1) door(doorX, [8]); else door(doorX, [row.face - 1, row.face]);
+  };
 
-  // ── 가운데 오픈 오피스 (9~22행) ──
-  carve(1, 9, 46, 22, G.OFFICE); room("floor", "오픈 오피스", 1, 9, 46, 22);
-  // 섬마다 러그(바닥색)로 구역 표시
-  paint(2, 10, 12, 15, G.CARPET); room("dev", "개발팀 섬", 2, 10, 12, 15);
-  paint(16, 10, 45, 15, G.TEAL); room("gh", "GitHub 개발본부 섬", 16, 10, 45, 15);
-  paint(2, 17, 12, 22, G.LOBBY); room("plan", "기획팀 섬 · Notion", 2, 17, 12, 22);
-  paint(16, 17, 28, 22, G.GREEN); room("research", "연구팀 섬 · Obsidian", 16, 17, 28, 22);
-  room("standup", "스탠드업 화이트보드", 33, 17, 44, 22);
+  // 복도 두 줄 + 오른쪽 세로 복도(두 복도를 잇는 통로)
+  carve(1, 9, 38, 10, G.OFFICE); room("hall", "복도", 1, 9, 38, 10);
+  carve(1, 19, 38, 20, G.OFFICE);
+  carve(37, 11, 38, 18, G.OFFICE);
 
-  // ── 아래쪽 방 3개 (23행 위벽, 24행 뒷벽, 25~30 바닥, 31행 바닥벽) ──
-  const BOT = [
-    { k: "lobby", n: "리셉션·입구", x0: 1, x1: 14, f: G.BEIGE, d: 7 },
-    { k: "cafe", n: "탕비실·카페", x0: 16, x1: 30, f: G.CAFE, d: 22 },
-    { k: "archive", n: "서류 캐비닛", x0: 32, x1: 46, f: G.WOOD, d: 38 },
-  ] as const;
-  for (const r of BOT) { carve(r.x0, 24, r.x1, 30, r.f); face(r.x0, r.x1, 24); room(r.k, r.n, r.x0, 24, r.x1, 30); door(r.d, [23, 24]); }
-  // 입구 (리셉션 왼쪽 벽)
-  for (const y of [27, 28]) { walls[idx(0, y)] = 0; floor[idx(0, y)] = G.MAT; }
-  poi("entrance", 1, 28, "right");
+  // ── 1줄: 생각실 / 자료실 / 코딩실(가장 큼) / 터미널실 ──
+  makeRoom("think", "생각실", R1, 1, 7, G.PURPLE, 4);
+  makeRoom("lib", "자료실", R1, 9, 15, G.WOOD, 12);
+  makeRoom("dev", "코딩실", R1, 17, 30, G.CARPET, 25);
+  makeRoom("srv", "터미널실", R1, 32, 38, G.STEEL, 34);
+  // ── 2줄: 조사실 / 회의실 / GitHub·Notion·Obsidian 출장실 ──
+  makeRoom("research", "조사실", R2, 1, 7, G.GREEN, 5);
+  makeRoom("meet", "회의실", R2, 9, 15, G.PURPLE, 9);
+  makeRoom("gh", "GitHub 출장", R2, 17, 22, G.TEAL, 21);
+  makeRoom("plan", "Notion 출장", R2, 24, 29, G.LOBBY, 28);
+  makeRoom("obsidian", "Obsidian 출장", R2, 31, 35, G.LAB, 31);
+  // ── 3줄: 결재대기 / 수면실 / 탕비실 / 리셉션(출퇴근) ──
+  makeRoom("ceo", "결재대기", R3, 1, 7, G.WOOD, 1);
+  makeRoom("nap", "수면실", R3, 9, 15, G.NAP, 9);
+  makeRoom("cafe", "탕비실", R3, 17, 29, G.CAFE, 22);
+  makeRoom("lobby", "리셉션", R3, 31, 38, G.BEIGE, 36);
+  // 출입구: 리셉션 오른쪽 벽
+  for (const y of [25, 26]) { walls[idx(39, y)] = 0; floor[idx(39, y)] = G.DOOR; }
+  poi("entrance", 38, 26, "left");
 
-  // ── 벽 장식 ──
-  setWall(3, 1, G.WINDOW); setWall(7, 1, G.BOSSDOOR);
-  setWall(14, 1, G.WHITEBOARD); setWall(17, 1, G.CLOCK);
-  setWall(41, 1, G.WINDOW); setWall(45, 1, G.WINDOW);
-  for (const x of [4, 11]) setWall(x, 24, G.WINDOW);
-  for (const x of [18, 26]) setWall(x, 24, G.WINDOW);
-  setWall(35, 24, G.CLOCK);
+  // ── 벽 장식 (바깥 창은 1줄 방에만) ──
+  for (const x of [2, 6, 10, 14, 19, 23, 28]) setWall(x, 1, G.WINDOW);
+  setWall(4, 1, G.WHITEBOARD); setWall(36, 1, G.CLOCK);
+  setWall(13, 12, G.WHITEBOARD); setWall(3, 12, G.CLOCK);
+  setWall(6, 22, G.BOSSDOOR); setWall(3, 22, G.CLOCK); setWall(25, 22, G.CLOCK);
 
-  // ── 대표실·결재대기: 대표 책상 + 결재 대기 벤치 ──
-  for (const x of [4, 5, 6]) put(x, 4, G.MTABLE);
-  put(5, 3, G.CHAIR_UP);
-  for (let x = 2; x <= 6; x++) { put(x, 6, G.BENCH); poi(`waiting_bench_${x - 1}`, x, 6, "up", "sit"); }
-  plant(9, 3); plant(1, 3);
+  // ── 생각실: 둥근 회의 테이블 + 안락 소파 ──
+  for (const [x, y] of [[3, 4], [4, 4], [3, 5], [4, 5]]) put(x, y, G.MTABLE);
+  poi("think_seat_1", 3, 3, "down", "sit"); poi("think_seat_2", 4, 3, "down", "sit");
+  poi("think_seat_3", 3, 6, "up", "sit"); poi("think_seat_4", 4, 6, "up", "sit");
+  put(6, 6, G.SOFA); put(7, 6, G.SOFA); poi("think_seat_5", 6, 6, "down", "sit");
+  put(1, 3, G.LAMP); plant(7, 3); plant(1, 7);
 
-  // ── 유리 회의실: 가운데 테이블, 양쪽 좌석 ──
-  for (let x = 13; x <= 16; x++) { put(x, 4, G.MTABLE); put(x, 5, G.MTABLE); }
-  let m = 1;
-  for (let x = 13; x <= 16; x++) poi(`meeting_seat_${m++}`, x, 3, "down", "sit");
-  for (let x = 13; x <= 16; x++) poi(`meeting_seat_${m++}`, x, 6, "up", "sit");
+  // ── 자료실: 책장 두 줄 + 열람 테이블 + 소파 ──
+  for (let x = 9; x <= 15; x++) { put(x, 2, G.SHELF); putTop(x, 1, G.SHELF_TOP); }
+  [9, 11, 13, 15].forEach((x, i) => poi(`bookshelf_${i + 1}`, x, 3, "up"));
+  for (let x = 9; x <= 11; x++) put(x, 5, G.SHELF);
+  poi("bookshelf_5", 9, 6, "up"); poi("bookshelf_6", 11, 6, "up");
+  put(13, 5, G.MTABLE); put(14, 5, G.MTABLE); poi("bookshelf_7", 13, 6, "up", "sit"); poi("bookshelf_8", 14, 6, "up", "sit");
+  put(14, 7, G.SOFA); put(15, 7, G.SOFA);
 
-  // ── 자료실: 뒷벽 전체가 책장 ──
-  for (let x = 20; x <= 28; x++) { put(x, 2, G.SHELF); putTop(x, 1, G.SHELF_TOP); }
-  [21, 23, 25, 27].forEach((x, i) => poi(`bookshelf_${i + 1}`, x, 3, "up"));
-  put(21, 6, G.MTABLE); put(27, 6, G.MTABLE);
+  // ── 코딩실: 마주 보는 책상 pod 두 개 + 팀장 책상 + 구석 스탠드업 ──
+  const n = island("seat_dev", [18, 19, 20], 4, G.DESK, 1, true);
+  island("seat_dev", [24, 25, 26], 4, G.DESK, n, true);
+  put(29, 2, G.STANDBOARD); put(30, 2, G.STANDBOARD);
+  [[29, 3], [30, 3], [29, 4], [30, 4]].forEach(([x, y], i) => poi(`standup_${i + 1}`, x, y, "up"));
+  plant(17, 7); plant(30, 7); put(23, 7, G.PRINTER);
 
-  // ── 서버실 ──
-  [31, 33, 35, 37].forEach((x, i) => { put(x, 2, G.RACK); putTop(x, 1, G.RACK_TOP); poi(`server_rack_${i + 1}`, x, 3, "up"); });
+  // ── 터미널실: 서버랙 두 줄 + 랙 앞 작업 자리 ──
+  [32, 34, 36, 38].forEach((x, i) => { put(x, 2, G.RACK); putTop(x, 1, G.RACK_TOP); poi(`server_rack_${i + 1}`, x, 3, "up"); });
+  [33, 35, 37].forEach((x, i) => { put(x, 5, G.RACK); putTop(x, 4, G.RACK_TOP); poi(`server_rack_${i + 5}`, x, 6, "up"); });
 
-  // ── 수면실: 캡슐 침대 + 무드등 ──
-  [40, 42, 44, 46].forEach((x, i) => { put(x, 2, G.BED_TOP); put(x, 3, G.BED_BOT); poi(`bed_${i + 1}`, x, 2, "down", "lie"); });
-  put(39, 7, G.LAMP);
+  // ── 조사실: 노트북 pod + 지구본 ──
+  island("research_desk", [2, 3, 4], 14, G.LAPTOP_DESK, 1, true);
+  put(7, 15, G.GLOBE); plant(7, 17);
 
-  // ── 섬: 개발팀(Claude 세션) / GitHub 개발본부(가장 큼) / 기획팀(Notion) / 연구팀(Obsidian) ──
-  island("seat_dev", [4, 6, 8, 10], 12);
-  island("repo_desk", [18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42], 12);
-  island("plan_desk", [4, 6, 8, 10], 19, G.LAPTOP_DESK);
-  island("research_desk", [18, 20, 22, 24, 26], 19, G.LAPTOP_DESK);
-  put(28, 18, G.GLOBE);
-  // 스탠드업 화이트보드 (서브에이전트에게 일을 나눠줄 때)
-  for (const x of [37, 38, 39, 40]) put(x, 18, G.STANDBOARD);
-  [36, 37, 38, 39, 40, 41].forEach((x, i) => poi(`standup_${i + 1}`, x, 20, "up"));
-  plant(14, 10); plant(14, 21); plant(46, 10); plant(31, 21); plant(46, 21);
+  // ── 회의실: 테이블과 양쪽 좌석 (서브에이전트 회의) ──
+  for (let x = 11; x <= 13; x++) { put(x, 14, G.MTABLE); put(x, 15, G.MTABLE); }
+  for (let x = 11; x <= 13; x++) poi(`meeting_seat_${x - 10}`, x, 13, "down", "sit");
+  for (let x = 11; x <= 13; x++) poi(`meeting_seat_${x - 7}`, x, 16, "up", "sit");
+  plant(15, 17); put(9, 17, G.LAMP);
 
-  // ── 리셉션: 안내 데스크 + 소파 ──
-  for (let x = 6; x <= 9; x++) put(x, 27, G.COUNTER);
-  put(2, 25, G.SOFA); put(3, 25, G.SOFA); poi("sofa_1", 2, 25, "down", "sit"); poi("sofa_2", 3, 25, "down", "sit");
-  plant(13, 26); plant(1, 30);
+  // ── 출장실 3곳: 마주 보는 pod ──
+  island("repo_desk", [21, 22], 14, G.DESK, island("repo_desk", [17, 18], 14));   // GitHub: 2+2 pod 두 개
+  island("plan_desk", [25, 26, 27], 14, G.LAPTOP_DESK, 1, true);
+  island("obsidian_desk", [32, 33, 34], 14, G.LAPTOP_DESK);
+  plant(22, 17); plant(29, 17); plant(35, 17);
 
-  // ── 탕비실·카페 ──
-  put(29, 25, G.COFFEE); poi("coffee_machine", 29, 26, "up");
-  for (let x = 17; x <= 20; x++) put(x, 25, G.COUNTER);
-  let c = 1;
-  for (const x of [19, 23, 27]) { put(x, 28, G.CAFE_TABLE); poi(`cafe_seat_${c++}`, x - 1, 28, "right", "sit"); poi(`cafe_seat_${c++}`, x + 1, 28, "left", "sit"); }
-  plant(16, 30); plant(30, 30);
+  // ── 결재대기: 내 책상(대표 책상) + 대기 벤치 ──
+  for (const x of [2, 3, 4]) put(x, 24, G.MTABLE);
+  put(3, 23, G.CHAIR_UP);
+  for (let x = 2; x <= 6; x++) { put(x, 26, G.BENCH); poi(`waiting_bench_${x - 1}`, x, 26, "up", "sit"); }
+  plant(7, 26); plant(1, 27);   // 오른쪽 위(5~7, 23~24)는 현황판 자리
 
-  // ── 서류 캐비닛 (비활성 저장소) ──
-  for (let x = 33; x <= 45; x++) if (x !== 38 && x !== 39) put(x, 25, G.CABINET);
-  for (let x = 33; x <= 45; x += 3) put(x, 29, G.CABINET);
-  poi("archive_cabinet", 40, 27, "up");
+  // ── 수면실: 침대 + 무드등 ──
+  [11, 13, 15].forEach((x, i) => { put(x, 23, G.BED_TOP); put(x, 24, G.BED_BOT); poi(`bed_${i + 1}`, x, 23, "down", "lie"); });
+  put(9, 27, G.LAMP); plant(15, 27);
+
+  // ── 탕비실: 커피머신·정수기·카운터 + 테이블 ──
+  for (let x = 18; x <= 21; x++) put(x, 23, G.COUNTER);
+  put(28, 23, G.COFFEE); poi("coffee_machine", 28, 24, "up");
+  put(26, 23, G.WATER);
+  put(20, 26, G.CAFE_TABLE); put(24, 26, G.CAFE_TABLE);
+  poi("cafe_seat_1", 19, 26, "right", "sit"); poi("cafe_seat_2", 21, 26, "left", "sit");
+  poi("cafe_seat_3", 23, 26, "right", "sit"); poi("cafe_seat_4", 25, 26, "left", "sit");
+  put(17, 27, G.SOFA); put(18, 27, G.SOFA); poi("sofa_1", 17, 27, "down", "sit"); poi("sofa_2", 18, 27, "down", "sit");
+  plant(29, 27);
+
+  // ── 리셉션: 안내 데스크 + 대기 소파 + 벽면 서류 캐비닛(쉬는 저장소) ──
+  for (let x = 33; x <= 35; x++) put(x, 25, G.COUNTER);
+  put(31, 27, G.SOFA); put(32, 27, G.SOFA); poi("sofa_3", 31, 27, "down", "sit"); poi("sofa_4", 32, 27, "down", "sit");
+  for (const x of [31, 32, 38]) put(x, 23, G.CABINET);
+  poi("archive_cabinet", 32, 24, "up");
+  room("archive", "서류 캐비닛", 31, 22, 32, 23);
+  plant(38, 27);
+
+  // ── 복도 리듬: 화분·정수기·프린터 ──
+  plant(1, 10); plant(16, 10); put(31, 9, G.WATER); put(8, 19, G.PRINTER); plant(23, 20); plant(30, 20); plant(1, 20);
 
   // ── collision ──
   const collision = new Array<number>(N).fill(0);
   for (let i = 0; i < N; i++) if (walls[i] || BLOCKING.has(furn[i])) collision[i] = 1;
 
+  const wallsTiled = autotileWalls(walls, MW, MH);
   const layer = (id: number, name: string, data: number[], visible = true) =>
     ({ id, name, type: "tilelayer", width: MW, height: MH, x: 0, y: 0, opacity: 1, visible, data });
   return {
     type: "map", version: "1.10", tiledversion: "generated", orientation: "orthogonal", renderorder: "right-down",
     width: MW, height: MH, tilewidth: TILE, tileheight: TILE, infinite: false, nextlayerid: 8, nextobjectid: oid,
     layers: [
-      layer(1, "floor", floor), layer(2, "walls", walls), layer(3, "furniture", furn), layer(4, "furniture-top", top),
+      layer(1, "floor", floor), layer(2, "walls", wallsTiled), layer(3, "furniture", furn), layer(4, "furniture-top", top),
       layer(5, "collision", collision, false),
       { id: 6, name: "objects", type: "objectgroup", visible: true, opacity: 1, x: 0, y: 0, draworder: "topdown", objects },
       { id: 7, name: "rooms", type: "objectgroup", visible: true, opacity: 1, x: 0, y: 0, draworder: "topdown", objects: rooms },
     ],
-    tilesets: [{ firstgid: 1, name: "office", tilewidth: TILE, tileheight: TILE, tilecount: TILE_COUNT, columns: TILE_COUNT,
-      image: "office-tiles.png", imagewidth: TILE * TILE_COUNT, imageheight: TILE, margin: 0, spacing: 0 }],
+    tilesets: [tilesetJson()],
   };
+}
+
+/** Tiled 타일셋 정의 (맵에 포함) — 이미지는 office-tiles.png */
+export function tilesetJson() {
+  const names = Object.entries(G).map(([k, v]) => ({ id: v - 1, name: k }));
+  return { firstgid: 1, name: "office", tilewidth: TILE, tileheight: TILE, tilecount: TILE_COUNT, columns: TILE_COLS,
+    image: "office-tiles.png", imagewidth: TILE * TILE_COLS, imageheight: TILE * Math.ceil(TILE_COUNT / TILE_COLS), margin: 0, spacing: 0,
+    tiles: names.map(n => ({ id: n.id, properties: [{ name: "name", type: "string", value: n.name }] })) };
 }

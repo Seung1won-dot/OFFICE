@@ -4,7 +4,8 @@
 
 | 무엇 | 만든 곳 | 라이선스 |
 |---|---|---|
-| 타일·가구·조명·캐릭터 스프라이트 전부 | 이 프로젝트에서 코드로 직접 그림 (`web/src/gfx/`) | MIT (이 저장소) |
+| 타일·가구·조명·건물 밖 풍경·상태 아이콘 | 이 프로젝트에서 코드로 직접 그림 (`web/src/gfx/`) | MIT (이 저장소) |
+| 몬스터 직원 (진화 단계 포함) | 이 프로젝트의 오리지널 디자인, 코드로 직접 그림 (`web/src/gfx/monsters.ts`) | MIT (이 저장소) |
 | 맵 | 코드로 생성 (`web/src/map/`) | MIT (이 저장소) |
 
 외부 이미지 에셋은 포함되어 있지 않아요. 특정 게임·브랜드의 캐릭터나 그림을 본뜨지 않았어요.
@@ -22,7 +23,9 @@
 
 ## 글꼴
 
-화면은 `Galmuri11`(SIL OFL) 글꼴이 설치되어 있으면 그것을, 없으면 시스템 고정폭 글꼴을 써요. 글꼴 파일은 포함하지 않아요.
+| 이름 | 용도 | 라이선스 |
+|---|---|---|
+| [Galmuri](https://github.com/quiple/galmuri) (Galmuri7, Galmuri11) — 만든 이 quiple | 맵 위 글씨와 화면 글씨 (npm `galmuri` 패키지, 빌드에 포함) | [SIL Open Font License 1.1](https://github.com/quiple/galmuri/blob/main/ofl.md) |
 
 ## 직접 넣는 에셋 (선택)
 

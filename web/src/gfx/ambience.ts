@@ -1,5 +1,6 @@
 // 분위기 연출 (두 층 공용): 밤 조명 + 빛 번짐, 둥근 러그, 책상 소품, 작은 움직임들
 import Phaser from "phaser";
+import { MAP_FONT } from "../ui/font";
 import { G, TILE } from "../map/defaultMap";
 import { hash } from "./people";
 
@@ -34,20 +35,10 @@ export function addNight(scene: Phaser.Scene, w: number, h: number, alpha = 0.26
 export function lightFromMap(scene: Phaser.Scene, map: Phaser.Tilemaps.Tilemap, rooms: { key: string; x: number; y: number; w: number; h: number }[]) {
   const at = (layer: string, cb: (gid: number, x: number, y: number) => void) =>
     map.getLayer(layer)?.data.forEach((row, ty) => row.forEach((t, tx) => { if (t.index > 0) cb(t.index, tx * TILE + TILE / 2, ty * TILE + TILE / 2); }));
-  // 천장 다운라이트: 방 가운데 + 넓은 공간은 격자로
-  for (const r of rooms) {
-    if (r.w > 20 * TILE) {
-      for (let x = r.x + 4 * TILE; x < r.x + r.w; x += 7 * TILE) for (let y = r.y + 3 * TILE; y < r.y + r.h; y += 6 * TILE) glow(scene, x, y, "#ffd9a0", 70, 0.10);
-    } else glow(scene, r.x + r.w / 2, r.y + r.h / 2, "#ffd9a0", Math.max(r.w, r.h) * 0.55, 0.12);
-  }
-  at("walls", (g, x, y) => { if (g === G.WINDOW) glow(scene, x, y + 10, "#7f9cff", 26, 0.22, 0.25); });
+  void rooms;   // 낮 오피스: 천장 다운라이트 대신 창문 햇빛(addSunlight)
   at("furniture", (g, x, y) => {
-    if (g === G.LAMP) glow(scene, x, y - 6, "#ffcf7a", 46, 0.55, 0.12);
-    else if (g === G.DESK_UP) glow(scene, x, y - 3, "#6fa8ff", 14, 0.28, 0.2);
-    else if (g === G.RACK) glow(scene, x, y + 2, "#5fe08a", 14, 0.22, 0.5);
-    else if (g === G.COFFEE) glow(scene, x, y - 2, "#ffcf7a", 18, 0.3);
-    else if (g === G.BED_TOP) glow(scene, x + 5, y - 4, "#ffcf7a", 10, 0.35);
-    else if (g === G.COUNTER) glow(scene, x, y + 2, "#ffcf7a", 16, 0.18);
+    if (g === G.LAMP) glow(scene, x, y - 6, "#ffcf7a", 22, 0.25, 0.12);
+    else if (g === G.RACK) glow(scene, x, y + 2, "#5fe08a", 10, 0.18, 0.5);
   });
 }
 
@@ -67,10 +58,16 @@ export function addDeskProps(scene: Phaser.Scene, pois: { name: string; kind: st
   const r = (x: number, y: number, w: number, h: number, c: string) => g.fillStyle(hex(c), 1).fillRect(x, y, w, h);
   for (const p of pois) {
     if (!kinds.includes(p.kind) || p.pose !== "sit") continue;
+    if (p.dir === "left") {   // 팀장 책상: 왼쪽 세로 책상 아래칸에 소품 하나
+      const h = hash(p.name), x = (p.tx - 1) * TILE + 9, y = (p.ty + 1) * TILE + 2;
+      if (h % 2) { r(x, y, 3, 3, "#f4f6f9"); r(x + 3, y + 1, 1, 1, "#f4f6f9"); r(x + 1, y, 1, 1, "#6a4528"); }
+      else { r(x, y + 2, 3, 2, "#c0683f"); r(x, y, 3, 2, "#5e9a4a"); }
+      continue;
+    }
     const deskY = p.dir === "down" ? p.ty + 1 : p.ty - 1;
     const ox = p.tx * TILE, oy = deskY * TILE + (p.dir === "down" ? 3 : 1);
     const h = hash(p.name), side = h % 2 ? 12 : 0;
-    const items = [h % 7, (h >> 3) % 7];
+    const items = [h % 9, (h >> 3) % 9];
     items.slice(0, 1 + ((h >> 6) % 2)).forEach((it, i) => {
       const x = ox + (i ? 12 - side : side) + 1, y = oy + (i ? 4 : 1);
       switch (it) {
@@ -80,6 +77,8 @@ export function addDeskProps(scene: Phaser.Scene, pois: { name: string; kind: st
         case 3: r(x, y, 4, 3, "#f4f6f9"); r(x + 1, y + 1, 2, 1, "#9aa0ad"); break;                                       // 서류
         case 4: r(x, y, 2, 2, "#ffd166"); r(x + 2, y + 1, 2, 2, "#f0a6a0"); break;                                       // 포스트잇
         case 5: r(x, y, 4, 1, "#2b2f3a"); r(x, y + 1, 1, 2, "#2b2f3a"); r(x + 3, y + 1, 1, 2, "#2b2f3a"); break;         // 헤드폰
+        case 7: r(x, y + 1, 3, 3, "#b07a50"); r(x, y, 1, 1, "#b07a50"); r(x + 2, y, 1, 1, "#b07a50"); r(x + 1, y + 2, 1, 1, "#2a1d1c"); break;   // 곰 인형
+        case 8: r(x, y + 2, 4, 2, "#f4f6f9"); r(x, y + 1, 4, 1, "#e6e2d8"); r(x + 1, y, 3, 1, "#f4f6f9"); r(x, y + 3, 4, 1, "#c9c3b6"); break;   // 서류 더미
         default: r(x, y, 3, 2, "#3d6fb0"); r(x, y + 2, 3, 1, "#c0504d"); break;                                          // 책
       }
     });
@@ -104,7 +103,7 @@ export function addLife(scene: Phaser.Scene, map: Phaser.Tilemaps.Tilemap) {
 
 /** 둥근 간판: 짙은 판 + 왼쪽 팀 색 띠 */
 export function sign(scene: Phaser.Scene, x: number, y: number, label: string, accent: string) {
-  const t = scene.add.text(0, 0, label, { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "7px", color: "#f6ead2" }).setResolution(4);
+  const t = scene.add.text(0, 0, label, { fontFamily: MAP_FONT, fontSize: "7px", color: "#f6ead2" }).setResolution(4);
   const w = Math.ceil(t.width) + 9, h = 11;
   const g = scene.add.graphics().setDepth(DEPTH.sign);
   g.fillStyle(0x000000, 0.3).fillRoundedRect(x + 1, y + 1, w, h, 3);
@@ -112,4 +111,34 @@ export function sign(scene: Phaser.Scene, x: number, y: number, label: string, a
   g.fillStyle(hex(accent), 1).fillRoundedRect(x + 2, y + 3, 2, h - 6, 1);
   t.setPosition(x + 6, y + 2).setDepth(DEPTH.sign + 1);
   return { w, h };
+}
+
+/** 창문으로 들어오는 햇빛: 창 아래 바닥에 비스듬한 밝은 사다리꼴 */
+export function addSunlight(scene: Phaser.Scene, map: Phaser.Tilemaps.Tilemap) {
+  const g = scene.add.graphics().setDepth(DEPTH.rug + 0.1);
+  const walls = map.getLayer("walls")?.data, floor = map.getLayer("floor")?.data;
+  if (!walls || !floor) return;
+  walls.forEach((row, ty) => row.forEach((t, tx) => {
+    if (t.index !== G.WINDOW) return;
+    let len = 0;   // 창 아래로 바닥이 이어지는 만큼 (최대 4칸)
+    while (len < 4 && floor[ty + 1 + len]?.[tx]?.index > 0 && !(walls[ty + 1 + len]?.[tx]?.index > 0)) len++;
+    if (!len) return;
+    const x0 = tx * TILE + 2, y0 = (ty + 1) * TILE, y1 = y0 + len * TILE, skew = len * 4;
+    g.fillStyle(0xfff3cf, 0.22).fillPoints([{ x: x0, y: y0 }, { x: x0 + 12, y: y0 }, { x: x0 + 12 + skew, y: y1 }, { x: x0 + skew, y: y1 }], true);
+    g.fillStyle(0xffffff, 0.10).fillPoints([{ x: x0 + 2, y: y0 }, { x: x0 + 6, y: y0 }, { x: x0 + 6 + skew, y: y1 }, { x: x0 + 2 + skew, y: y1 }], true);
+  }));
+}
+
+/** 마주 보는 책상 사이 낮은 파티션 (objects 레이어의 type=partition) */
+export function addPartitions(scene: Phaser.Scene, map: Phaser.Tilemaps.Tilemap) {
+  const g = scene.add.graphics().setDepth(2.5);
+  for (const o of map.getObjectLayer("objects")?.objects ?? []) {
+    if (o.type !== "partition") continue;
+    const x = Math.round(o.x!), y = Math.round(o.y!), w = Math.round(o.width!);
+    g.fillStyle(0x6e5440, 1).fillRect(x, y - 1, w, 1);                    // 위 테두리
+    g.fillStyle(0xdfe8ea, 0.92).fillRect(x, y, w, 3);                     // 반투명 패널
+    g.fillStyle(0xffffff, 0.6).fillRect(x, y, w, 1);
+    g.fillStyle(0x8a9aa0, 1).fillRect(x, y + 3, w, 1);
+    for (let px = x + 15; px < x + w; px += 16) g.fillStyle(0x6e5440, 1).fillRect(px, y - 1, 1, 5);   // 책상마다 기둥
+  }
 }

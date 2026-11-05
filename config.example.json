@@ -12,19 +12,19 @@
     "_comment": "도구 이름에 키워드가 들어 있으면(대소문자 무시) 그 구역으로 출장. 위에서부터 먼저 맞는 것 적용",
     "github": "gh",
     "notion": "plan",
-    "obsidian": "research",
+    "obsidian": "obsidian",
     "websearch": "research",
     "webfetch": "research"
   },
   "zones": {
-    "_comment": "세션 상태 → 구역. 구역 키: dev lib srv research plan gh meet ceo cafe nap standup",
+    "_comment": "세션 상태 → 방. 방 키: think lib dev srv research meet gh plan obsidian ceo nap cafe standup",
     "waiting": "ceo",
     "read": "lib",
     "run": "srv",
     "edit": "dev",
     "browse": "research",
-    "think": "meet",
-    "delegate": "dev",
+    "think": "think",
+    "delegate": "meet",
     "done": "cafe",
     "sleep": "nap"
   },

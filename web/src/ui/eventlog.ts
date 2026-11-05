@@ -16,7 +16,7 @@ export function initLog(nameOf: Namer, phrase: Phraser) {
   apply();
   const ICON: Record<string, string> = { join: "🚪", tool: "·", wait: "!", done: "✓" };
   const render = () => {
-    list.innerHTML = items.slice(-8).reverse().map(e => {
+    list.innerHTML = items.slice(-4).reverse().map(e => {
       const time = new Date(e.t).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
       const text = e.kind === "tool" ? phrase(e.text) : e.text;
       return `<li class="k-${e.kind}"><time>${time}</time><b>${esc(nameOf(e.id, e.title))}</b><i>${ICON[e.kind]}</i>${esc(text)}</li>`;

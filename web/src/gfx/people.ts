@@ -151,7 +151,7 @@ function head(p: P, L: Look, view: "front" | "back" | "side", blink = false) {
 
 function drawFrame(p: P, L: Look, dirRow: number, f: number, sit: boolean) {
   const view = dirRow === 0 ? "front" : dirRow === 1 ? "back" : "side";
-  p(4, 22, 8, 2, "rgba(0,0,0,0.25)");   // 그림자
+  p(4, 22, 8, 2, "rgba(40,20,10,0.25)");   // 그림자
   legs(p, L, view === "back" ? "front" : view, f, sit);
   if (view === "back") { outfit(p, L, "back", f); head(p, L, "back"); }
   else { outfit(p, L, view, f); head(p, L, view); }

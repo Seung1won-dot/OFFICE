@@ -1,14 +1,15 @@
 // 머리 위 말풍선 (캔버스 안): 꼬리 달린 둥근 상자 + 글씨
 //  work = 지금 하는 일 (주황 테두리, 계속 떠 있음) / wait = 내 확인 필요 (노랑) / chat = 잡담 (크림) / plain = 작은 표시
 import Phaser from "phaser";
+import { MAP_FONT } from "../ui/font";
 import { DEPTH } from "./ambience";
 
 export type SpeechKind = "work" | "wait" | "chat" | "plain" | "done";
 const STYLE: Record<SpeechKind, { fill: number; line: number; lw: number; ink: string; size: number }> = {
   work: { fill: 0xfff3e6, line: 0xe8875a, lw: 1.5, ink: "#2a1d1c", size: 7 },
   wait: { fill: 0xffe9a8, line: 0xc9973a, lw: 1.5, ink: "#2a1d1c", size: 7 },
-  chat: { fill: 0xfbf3e2, line: 0x2a1d1c, lw: 1, ink: "#2a1d1c", size: 6.5 },
-  plain: { fill: 0xf6ead2, line: 0x2a1d1c, lw: 1, ink: "#2a1d1c", size: 6.5 },
+  chat: { fill: 0xfbf3e2, line: 0x2a1d1c, lw: 1, ink: "#2a1d1c", size: 7 },
+  plain: { fill: 0xf6ead2, line: 0x2a1d1c, lw: 1, ink: "#2a1d1c", size: 7 },
   done: { fill: 0xeaf7df, line: 0x5e9a4a, lw: 1.5, ink: "#2a1d1c", size: 7 },
 };
 
@@ -17,10 +18,10 @@ export class Speech {
   g: Phaser.GameObjects.Graphics;
   t: Phaser.GameObjects.Text;
   key = "";
-  h = 0;
+  h = 0; w = 0;
   constructor(scene: Phaser.Scene) {
     this.g = scene.add.graphics();
-    this.t = scene.add.text(0, 0, "", { fontFamily: "Galmuri11, ui-monospace, monospace", fontSize: "7px", color: "#2a1d1c", align: "center", lineSpacing: 1 })
+    this.t = scene.add.text(0, 0, "", { fontFamily: MAP_FONT, fontSize: "7px", color: "#2a1d1c", align: "center", lineSpacing: 1 })
       .setOrigin(0.5).setResolution(4);
     this.box = scene.add.container(0, 0, [this.g, this.t]).setDepth(DEPTH.icon).setVisible(false);
   }
@@ -32,7 +33,7 @@ export class Speech {
     const st = STYLE[kind];
     this.t.setText(text).setFontSize(st.size).setColor(st.ink);
     const w = Math.ceil(this.t.width) + 9, h = Math.ceil(this.t.height) + 5;
-    this.h = h;
+    this.h = h; this.w = w;
     const g = this.g.clear();
     g.fillStyle(0x000000, 0.22).fillRoundedRect(-w / 2 + 1, -h - 4 + 1, w, h, 4);                       // 그림자
     g.fillStyle(st.fill, 1).fillRoundedRect(-w / 2, -h - 4, w, h, 4);
