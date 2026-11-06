@@ -27,6 +27,12 @@
 |---|---|---|
 | [Galmuri](https://github.com/quiple/galmuri) (Galmuri7, Galmuri11) — 만든 이 quiple | 맵 위 글씨와 화면 글씨 (npm `galmuri` 패키지, 빌드에 포함) | [SIL Open Font License 1.1](https://github.com/quiple/galmuri/blob/main/ofl.md) |
 
+## 데이터
+
+| 무엇 | 출처 | 라이선스 |
+|---|---|---|
+| 진짜 날씨 (켰을 때만, `collectors/weather.js`) | [Weather data by Open-Meteo.com](https://open-meteo.com/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (비상업용 무료, 키 없음) |
+
 ## 직접 넣는 에셋 (선택)
 
 `assets/third-party/` 에 넣는 에셋은 이 저장소에 포함되지 않으며, 각 에셋의 라이선스를 따르세요. 자세한 방법은 `assets/README.md`.

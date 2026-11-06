@@ -87,10 +87,10 @@ export class ResearchScene extends Phaser.Scene {
     addRugs(this, rooms, rugColors);
     addDeskProps(this, pois, ["lab_seat"]);
     lightFromMap(this, map, rooms);
-    addSunlight(this, map);
+    const sun = addSunlight(this, map);
     addLife(this, map);
     const outdoor = addOutdoor(this, map.widthInPixels, map.heightInPixels, null, 4747);   // 화면 남는 곳은 밝은 바깥 풍경
-    addOutdoorLife(this, outdoor.geo, outdoor.season);   // 계절 따라 흩날리는 것 · 구름 그림자 · 새 · 지나가는 차
+    addOutdoorLife(this, outdoor.geo, outdoor.season, { map, sun });   // 계절·진짜 날씨 따라: 비·눈·안개 · 구름 그림자 · 새 · 지나가는 차 · 창밖 하늘
 
     // 라운지 간판 + 주간 로그 게시판
     sign(this, 1 * TILE + 3, 1 * TILE + 2, "B1 연구실", "#7fd1c7");

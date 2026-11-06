@@ -9,7 +9,8 @@ import { addOutdoor, OutdoorGeo } from "../gfx/outdoor";
 import { addOutdoorLife } from "../gfx/outdoorLife";
 import { describeCommand } from "../ui/commands";
 import { renderMembers, hideMembers, membersHeight, onMembersResize, Member } from "../ui/members";
-import { ensureEmotes, emoteFrame, Emote } from "../gfx/emotes";
+import { ensureEmotes, emoteFrame, Emote, ensureUmbrellas, UMBRELLAS } from "../gfx/emotes";
+import { isWet } from "../ui/weather";
 import { loadSkins, pickSkin, makeSkinSheet, skinName, SkinSet, mainSkins, otherSkins, fileKey } from "../gfx/skins";
 
 /** 직급 → 진화 단계: 인턴=알, 사원·대리=기본, 과장 이상=진화 */
@@ -172,6 +173,7 @@ class Walker {
   sepX = 0; sepTarget = 0;   // 같은 칸에 여럿이 서면 옆으로 비켜 서는 거리(px)
   skinned = false;   // 개인용 스킨 그림 (그림자를 따로 깔아 줌)
   shadow?: Phaser.GameObjects.Ellipse; emote?: Phaser.GameObjects.Image; doneAt = 0; prevActivity = "";
+  umbrella?: Phaser.GameObjects.Image;   // 비·눈 올 때 건물 밖에선 우산
   mainNpc = false;   // 주인공(skins/main) 중 세션에 안 쓰인 아이 — 퇴근 없이 늘 사무실에 있음
   species: Species = "ember"; stage: Stage = 1; lookKey = "";
   // 생동감: 걷기 가감속, 대기 모션, 눈 깜빡임, 땀방울
@@ -315,7 +317,15 @@ class Walker {
     this.updateMarker();
     this.sweat();
     this.updateShadow();
+    this.updateUmbrella(headY);
     this.updateEmote(now, lying, headY);
+  }
+  /** 비나 눈이 오는데 건물 밖(정원·출퇴근길)이면 머리 위에 우산 — 색은 캐릭터마다 고정 */
+  updateUmbrella(headY: number) {
+    const s = this.sprite, show = this.outside && isWet() && s.alpha > 0.05;
+    if (!show) { this.umbrella?.setVisible(false); return; }
+    if (!this.umbrella) this.umbrella = this.scene.add.image(0, 0, `umbrella-${hash(this.lookKey || this.id) % UMBRELLAS}`).setOrigin(0.5, 1);
+    this.umbrella.setVisible(true).setPosition(s.x, headY + 4).setDepth(s.depth + 0.2).setAlpha(s.alpha);
   }
   /** 스킨 그림 발밑 그림자 (몬스터 시트는 그림에 그림자가 들어 있음) */
   updateShadow() {
@@ -340,8 +350,8 @@ class Walker {
     const key = emoteFrame(e, now);
     if (!key) { this.emote?.setVisible(false); return; }
     if (!this.emote) this.emote = this.scene.add.image(0, 0, key).setOrigin(0.5, 1);
-    const s = this.sprite, hop = e === "alert" ? -Math.abs(Math.round(Math.sin(now / 160) * 2)) : 0;
-    this.emote.setTexture(key).setVisible(true).setPosition(s.x + 11, headY + 9 + hop).setDepth(DEPTH.icon - 0.5 + s.y / 1000);
+    const s = this.sprite, hop = e === "alert" ? -Math.abs(Math.round(Math.sin(now / 160) * 2)) : 0, ux = this.umbrella?.visible ? 15 : 11;   // 우산을 쓰면 옆으로 비켜서
+    this.emote.setTexture(key).setVisible(true).setPosition(s.x + ux, headY + 9 + hop).setDepth(DEPTH.icon - 0.5 + s.y / 1000);
   }
   /** 도구가 방금 에러를 냈으면 머리 옆에 땀방울이 주르륵 */
   sweat() {
@@ -354,7 +364,7 @@ class Walker {
     const d = this.scene.add.rectangle(x, y, 2, 3, 0x9fd3ff).setStrokeStyle(1, 0x3d6fb0).setDepth(DEPTH.icon - 1);
     this.scene.tweens.add({ targets: d, y: y + 7, alpha: 0, duration: 800, ease: "Quad.in", onComplete: () => d.destroy() });
   }
-  destroy() { this.sprite.destroy(); this.tag.destroy(); this.icon.destroy(); this.ring?.destroy(); this.light?.destroy(); this.shadow?.destroy(); this.emote?.destroy(); }
+  destroy() { this.sprite.destroy(); this.tag.destroy(); this.icon.destroy(); this.ring?.destroy(); this.light?.destroy(); this.shadow?.destroy(); this.emote?.destroy(); this.umbrella?.destroy(); }
 }
 
 export class OfficeScene extends Phaser.Scene {
@@ -415,13 +425,15 @@ export class OfficeScene extends Phaser.Scene {
     const outdoor = addOutdoor(this, this.map.widthInPixels, this.map.heightInPixels, this.entrance);
     this.geo = outdoor.geo;
     this.setupDoorRoutes();
-    addOutdoorLife(this, this.geo, outdoor.season, () => membersHeight() / (this.cameras.main.zoom || 1));
     // 분위기: 러그 · 책상 소품 · 조명 · 밤 · 작은 움직임
     ensureGlowTexture(this);
     addRugs(this, this.rooms, { dev: "#7d8ca6", gh: "#7f9478", plan: "#988898", research: "#a39a78", obsidian: "#9a9282", meet: "#8f94a8", think: "#8f94a8" });
     addDeskProps(this, this.pois, ["seat_dev", "repo_desk", "plan_desk", "research_desk", "obsidian_desk"]);
     lightFromMap(this, this.map, this.rooms.filter(r => r.key !== "floor"));
-    addSunlight(this, this.map);   // 밝은 낮 오피스 (밤 분위기 없음)
+    const sun = addSunlight(this, this.map);   // 밝은 낮 오피스 (밤 분위기 없음). 흐리거나 비 오면 햇살만 약해짐
+    // 계절·진짜 날씨 따라 움직이는 바깥 (비·눈·안개, 창밖 하늘, 햇살 세기)
+    addOutdoorLife(this, this.geo, outdoor.season, { topCover: () => membersHeight() / (this.cameras.main.zoom || 1), map: this.map, sun });
+    ensureUmbrellas(this);
     addPartitions(this, this.map);
     this.setupMonitors(); this.setupProps();
     addLife(this, this.map);

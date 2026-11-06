@@ -115,9 +115,9 @@ export function sign(scene: Phaser.Scene, x: number, y: number, label: string, a
 
 /** 창문으로 들어오는 햇빛: 창 아래 바닥에 비스듬한 밝은 사다리꼴 */
 export function addSunlight(scene: Phaser.Scene, map: Phaser.Tilemaps.Tilemap) {
-  const g = scene.add.graphics().setDepth(DEPTH.rug + 0.1);
+  const g = scene.add.graphics().setDepth(DEPTH.rug + 0.1);   // 돌려준 그래픽의 투명도로 날씨(흐림·비)에 따라 햇살을 약하게
   const walls = map.getLayer("walls")?.data, floor = map.getLayer("floor")?.data;
-  if (!walls || !floor) return;
+  if (!walls || !floor) return g;
   walls.forEach((row, ty) => row.forEach((t, tx) => {
     if (t.index !== G.WINDOW) return;
     let len = 0;   // 창 아래로 바닥이 이어지는 만큼 (최대 4칸)
@@ -127,6 +127,7 @@ export function addSunlight(scene: Phaser.Scene, map: Phaser.Tilemaps.Tilemap) {
     g.fillStyle(0xfff3cf, 0.22).fillPoints([{ x: x0, y: y0 }, { x: x0 + 12, y: y0 }, { x: x0 + 12 + skew, y: y1 }, { x: x0 + skew, y: y1 }], true);
     g.fillStyle(0xffffff, 0.10).fillPoints([{ x: x0 + 2, y: y0 }, { x: x0 + 6, y: y0 }, { x: x0 + 6 + skew, y: y1 }, { x: x0 + 2 + skew, y: y1 }], true);
   }));
+  return g;
 }
 
 /** 마주 보는 책상 사이 낮은 파티션 (objects 레이어의 type=partition) */

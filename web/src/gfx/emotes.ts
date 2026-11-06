@@ -44,6 +44,24 @@ export function ensureEmotes(scene: Phaser.Scene) {
   });
 }
 
+/** 우산 (비·눈 올 때 건물 밖에 있는 직원 머리 위). 색 5가지: umbrella-0 ~ umbrella-4 */
+export const UMBRELLAS = 5;
+export function ensureUmbrellas(scene: Phaser.Scene) {
+  const COLORS: [string, string, string][] = [["#e8574a", "#f48a7a", "#b8403a"], ["#f2c84b", "#fbe28a", "#c99d2a"], ["#5aa0e6", "#8cc2f4", "#3d78b8"],
+    ["#f29ab8", "#f9c4d6", "#c46a8c"], ["#6cc070", "#9ad99a", "#4a9050"]];
+  const ROWS: [number, number][] = [[7, 7], [5, 9], [3, 11], [2, 12], [1, 13], [0, 14], [0, 14]];   // 줄마다 왼쪽·오른쪽 끝 (둥근 지붕)
+  COLORS.forEach(([base, light, dark], i) => make(scene, `umbrella-${i}`, 15, 11, px => {
+    ROWS.forEach(([x0, x1], r) => {
+      for (let x = x0; x <= x1; x++) {
+        const edge = x === x0 || x === x1 || r === 0;
+        px(x, r, edge ? OUT : r === 6 ? (x % 2 ? dark : base) : Math.floor((x + 1) / 3) % 2 ? light : base);
+      }
+    });
+    px(4, 2, "#ffffff");                                        // 반짝
+    px(7, 7, OUT); px(7, 8, OUT); px(7, 9, OUT); px(6, 10, OUT); px(7, 10, OUT);   // 손잡이
+  }));
+}
+
 export type Emote = "" | "alert" | "think" | "spark" | "zzz";
 
 /** 지금 보여줄 아이콘과 프레임 텍스처 */

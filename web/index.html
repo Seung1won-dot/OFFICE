@@ -56,6 +56,15 @@
     #tokens .bar i { display: block; height: 100%; }
     #tokens .lim { color: #ff6b5a; font-weight: bold; }
     #tokens .warn { color: #ff6b5a; }
+    /* 날씨 칩: 아이콘 · 기온 · 날씨 이름 (커서를 올리면 동네·강수·바람) */
+    #weather { display: flex; gap: 5px; align-items: center; font-size: 11px; color: #d9c9b6; background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 3px 9px; white-space: nowrap; cursor: default; }
+    #weather[hidden] { display: none; }
+    #weather .wi { font-size: 13px; line-height: 1; }
+    #weather b { color: var(--ink); font-weight: normal; }
+    /* 번개: 뇌우일 때 가끔 화면이 은은하게 두 번 번쩍 */
+    #lightning { position: absolute; inset: 0; pointer-events: none; z-index: 4; background: #f4f8ff; opacity: 0; }
+    #lightning.on { animation: bolt 0.9s ease-out; }
+    @keyframes bolt { 0% { opacity: 0; } 6% { opacity: .26; } 14% { opacity: .04; } 22% { opacity: .2; } 100% { opacity: 0; } }
     .tog { font: inherit; font-size: 11px; color: var(--muted); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; cursor: pointer; white-space: nowrap; }
     .tog.on { color: #2a1d1c; background: #d6a748; border-color: #d6a748; }
     @media (max-width: 900px) { #btn-typing { display: none; } #hud { display: none; } }
@@ -122,13 +131,14 @@
       <div id="floors"><button data-floor="office" class="on">1F 사무실</button><button data-floor="research">B1 연구실</button></div>
       <div id="hud">불러오는 중…</div>
       <div id="right">
+        <div id="weather" hidden></div>
         <div id="tokens" title="토큰 사용량 (이 컴퓨터의 Claude Code 기록 기준)"></div>
         <button id="btn-guide" class="tog" title="부서 안내 열기/닫기 (H)">📋 부서 안내</button>
         <button id="btn-alerts" class="tog"></button>
         <button id="btn-typing" class="tog"></button>
       </div>
     </header>
-    <main id="stage"><div id="game"></div>
+    <main id="stage"><div id="game"></div><div id="lightning"></div>
       <div id="log"><button id="log-toggle"></button><ul></ul></div>
       <div id="card" hidden></div>
       <aside id="guide"><button class="close" id="guide-close" title="닫기 (H)">✕</button>

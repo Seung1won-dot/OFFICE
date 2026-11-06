@@ -7,6 +7,9 @@ import { settings, audio, enableDesktop } from "./ui/alerts";
 import { initLog } from "./ui/eventlog";
 import { phraseDetail } from "./scenes/OfficeScene";
 import { rankOf } from "./ui/names";
+import { startWeather } from "./ui/weather";
+
+startWeather();   // 진짜 날씨 (config.json 에 위치가 있을 때) — 오른쪽 위 칩 + 비·눈 풍경
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
