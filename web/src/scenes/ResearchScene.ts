@@ -95,6 +95,8 @@ export class ResearchScene extends Phaser.Scene {
     // 라운지 간판 + 주간 로그 게시판
     sign(this, 1 * TILE + 3, 1 * TILE + 2, "B1 연구실", "#7fd1c7");
     this.weeklyBoard(27 * TILE, 2 * TILE);
+    this.calendarBoard(11 * TILE, 2 * TILE + 2);          // 이번 주 달력 (날마다 Claude 사용량 잔디)
+    this.progressBoard(34 * TILE, 2 * TILE + 2, projects);   // 프로젝트별 진행 막대
 
     if (!projects.length) {
       this.add.text(map.widthInPixels / 2, 11 * TILE, d?.error ? `research-log 읽기 실패: ${d.error}` : "research-log/projects/ 에 기록(.md)을 추가하면 방이 생겨요",
@@ -115,6 +117,51 @@ export class ResearchScene extends Phaser.Scene {
     }
     this.fit();
     this.renderPanel();
+  }
+
+  /** 서 있는 작은 게시판 바탕 (크림색 판 + 다리 + 위쪽 색 띠) */
+  standBoard(x: number, y: number, w: number, h: number, accent: number, title: string) {
+    const g = this.add.graphics().setDepth(DEPTH.sign);
+    g.fillStyle(0x6b4a32, 1).fillRect(x + 6, y + h, 2, 6).fillRect(x + w - 8, y + h, 2, 6);
+    g.fillStyle(0x000000, 0.2).fillRoundedRect(x + 1, y + 2, w, h, 3);
+    g.fillStyle(0xfff6e6, 1).fillRoundedRect(x, y, w, h, 3).lineStyle(1, 0x2a1d1c, 1).strokeRoundedRect(x, y, w, h, 3);
+    g.fillStyle(accent, 1).fillRect(x + 1, y + 1, w - 2, 2);
+    this.add.text(x + 4, y + 4, title, { fontFamily: MAP_FONT, fontSize: "7px", color: "#2a1d1c" }).setResolution(4).setDepth(DEPTH.sign + 1);
+    return g;
+  }
+  /** 이번 주 달력: 월~일 칸, 날마다 Claude 사용량만큼 초록, 오늘은 주황 테두리 */
+  async calendarBoard(x: number, y: number) {
+    const w = 80, h = 36, g = this.standBoard(x, y, w, h, 0x7fd1c7, "이번 주");
+    const now = new Date(), dow = (now.getDay() + 6) % 7, monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+    let days: Record<string, number> = {};
+    try { days = (await (await fetch("/api/sessions")).json()).stats?.days || {}; } catch { /* */ }
+    if (!g.scene) return;   // 그사이 층을 다시 그렸으면 그만
+    const key = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const vals = [...Array(7)].map((_, i) => days[key(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i))] || 0), max = Math.max(1, ...vals);
+    const GR = [0xe6dccb, 0xc6e3a8, 0x8fcf6a, 0x5aa64a, 0x2f7a35];
+    "월화수목금토일".split("").forEach((d, i) => {
+      const cx = x + 4 + i * 10.5, cy = y + 15, v = vals[i], lv = v <= 0 ? 0 : Math.min(4, 1 + Math.floor((v / max) * 3.999));
+      g.fillStyle(i > dow ? 0xf3ece0 : GR[lv], 1).fillRect(cx, cy, 9, 9);
+      if (i === dow) g.lineStyle(1, 0xe8875a, 1).strokeRect(cx - 0.5, cy - 0.5, 10, 10);
+      this.add.text(cx + 4.5, cy + 10, d, { fontFamily: MAP_FONT, fontSize: "7px", color: i >= 5 ? "#c0504d" : "#6e5440" }).setOrigin(0.5, 0).setResolution(4).setDepth(DEPTH.sign + 1).setScale(0.8);
+    });
+    const zone = this.add.zone(x, y, w, h).setOrigin(0).setInteractive().setDepth(DEPTH.sign);
+    zone.on("pointerover", () => showBubble(this, () => ({ x: x + w / 2, y }), `<b>이번 주 Claude 사용</b><div>${"월화수목금토일".split("").map((d, i) => `${d} ${i > dow ? "-" : vals[i] >= 1e6 ? Math.round(vals[i] / 1e6) + "백만" : vals[i] ? Math.round(vals[i] / 1e4) + "만" : "0"}`).join(" · ")}</div><small>진할수록 많이 쓴 날 · 오늘은 주황 테두리</small>`))
+      .on("pointerout", () => hideBubble(this));
+  }
+  /** 프로젝트 진행: 프로젝트마다 기록 섹션 n/4 막대 + 사례 수 (상태 색) */
+  progressBoard(x: number, y: number, projects: ResearchProject[]) {
+    const list = projects.slice(0, 3), w = 164, h = 12 + Math.max(1, list.length) * 8;
+    const g = this.standBoard(x, y, w, h, 0xe8b84a, "프로젝트 진행");
+    if (!list.length) { this.add.text(x + 60, y + 4, "기록이 생기면 여기에", { fontFamily: MAP_FONT, fontSize: "7px", color: "#8a7a6e" }).setResolution(4).setDepth(DEPTH.sign + 1); return; }
+    list.forEach((p, i) => {
+      const ry = y + 12 + i * 8, name = p.name.length > 9 ? p.name.slice(0, 8) + "…" : p.name, col = Phaser.Display.Color.HexStringToColor(STATE_COLOR[p.state]).color;
+      this.add.text(x + 4, ry - 1, name, { fontFamily: MAP_FONT, fontSize: "7px", color: "#2a1d1c" }).setResolution(4).setDepth(DEPTH.sign + 1);
+      const bx = x + 62, bw = 56, f = Math.max(0, Math.min(4, p.filled));
+      g.fillStyle(0xe6dccb, 1).fillRect(bx, ry + 1, bw, 5).fillStyle(col, 1).fillRect(bx, ry + 1, Math.round(bw * f / 4), 5);
+      for (let k = 1; k < 4; k++) g.fillStyle(0xfff6e6, 1).fillRect(bx + Math.round(bw * k / 4), ry + 1, 1, 5);   // 섹션 칸
+      this.add.text(x + 122, ry - 1, `${f}/4 · ${p.cases}건`, { fontFamily: MAP_FONT, fontSize: "7px", color: "#6e5440" }).setResolution(4).setDepth(DEPTH.sign + 1);
+    });
   }
 
   weeklyBoard(x: number, y: number) {

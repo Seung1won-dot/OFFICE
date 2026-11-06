@@ -8,6 +8,7 @@ import { initLog } from "./ui/eventlog";
 import { phraseDetail } from "./scenes/OfficeScene";
 import { rankOf } from "./ui/names";
 import { startWeather } from "./ui/weather";
+import { startNature } from "./ui/nature";
 
 startWeather();   // 진짜 날씨 (config.json 에 위치가 있을 때) — 오른쪽 위 칩 + 비·눈 풍경
 
@@ -81,7 +82,7 @@ async function renderCollectors() {
 renderCollectors(); setInterval(renderCollectors, 60000);
 
 // ── 오른쪽 위 버튼: 알림(소리+데스크톱) / 타자 소리 ──
-function bindToggle(id: string, key: "alerts" | "typing", onLabel: string, offLabel: string, onEnable?: () => void) {
+function bindToggle(id: string, key: "alerts" | "typing" | "nature", onLabel: string, offLabel: string, onEnable?: () => void) {
   const b = document.getElementById(id) as HTMLButtonElement;
   const paint = () => { b.classList.toggle("on", settings[key]); b.textContent = settings[key] ? onLabel : offLabel; };
   b.addEventListener("click", () => { settings[key] = !settings[key]; if (settings[key]) { audio(); onEnable?.(); } paint(); });
@@ -89,6 +90,8 @@ function bindToggle(id: string, key: "alerts" | "typing", onLabel: string, offLa
 }
 bindToggle("btn-alerts", "alerts", "🔔 알림 켬", "🔕 알림 끔", () => { enableDesktop(); });
 bindToggle("btn-typing", "typing", "⌨ 타자 소리 켬", "⌨ 타자 소리 끔");
+bindToggle("btn-nature", "nature", "🌿 자연 소리 켬", "🌿 자연 소리 끔");
+startNature();
 // 브라우저 정책: 아무 곳이나 한 번 누르면 소리 준비
 window.addEventListener("pointerdown", () => audio(), { once: true });
 

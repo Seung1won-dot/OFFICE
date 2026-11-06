@@ -247,6 +247,18 @@ function listSessions(cfg) {
   return out.slice(0, max);
 }
 
+/** 활동 잔디용: 오늘 시간대별(0~23시) 토큰, 최근 14일 날짜별 토큰 (읽어 둔 세션 기록 전체 기준) */
+function activity() {
+  const hours = new Array(24).fill(0), days = {};
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const h0 = Math.floor(today.getTime() / 3600000), dayAgo = Date.now() - 14 * 864e5;
+  for (const c of fileStats.values()) {
+    for (const [hk, v] of Object.entries(c.tokensByHour)) { const i = +hk - h0; if (i >= 0 && i < 24) hours[i] += v; }
+    for (const [dk, v] of Object.entries(c.tokensByDay)) { const [y, m, d] = dk.split("-").map(Number); if (new Date(y, m - 1, d).getTime() >= dayAgo) days[dk] = (days[dk] || 0) + v; }
+  }
+  return { hours, days };
+}
+
 module.exports = {
   name: "claude",
   title: "개발팀 (Claude Code)",
@@ -263,8 +275,9 @@ module.exports = {
         tokens5h: sessions.reduce((a, s) => a + (s.tokens5h || 0), 0),
         budget5h: Number(ctx.config().tokenBudget5h) || 0,
         limit: sessions.map(s => s.limit).filter(Boolean).sort((a, b) => b.resetsAt - a.resetsAt)[0] || null,
+        ...activity(),
       };
-      ctx.send(res, 200, { now: Date.now(), host: os.hostname(), sessions: sessions.map(({ firstAt, ...s }) => s), stats });
+      ctx.send(res, 200, { now: Date.now(), host: os.hostname(), sessions: sessions.map(({ firstAt, ...s }) => ({ ...s, doneToday: store.doneToday(s.id) })), stats });
     },
     "GET /api/events": (req, res, ctx) => {
       const since = Number(new URL(req.url, "http://x").searchParams.get("since")) || 0;

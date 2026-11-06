@@ -3,7 +3,7 @@ import { phraseDetail } from "../scenes/OfficeScene";   // 명령어 대신 읽�
 import { esc, ago } from "./bubble";
 import { hpColor } from "./members";
 
-export interface CardInfo { id: string; name: string; rank: string; role: string; dept: string; color: string; spriteKey: string; scene: Phaser.Scene; title: string; hp?: number | null; lv?: number | null }
+export interface CardInfo { id: string; name: string; rank: string; role: string; dept: string; color: string; spriteKey: string; scene: Phaser.Scene; title: string; hp?: number | null; lv?: number | null; friend?: string }
 
 export async function showCard(info: CardInfo) {
   const root = document.getElementById("card")!;
@@ -24,6 +24,7 @@ export async function showCard(info: CardInfo) {
         <dt>담당</dt><dd>${esc(info.title)}</dd>
         <dt>입사일</dt><dd>${since}</dd>
         <dt>오늘 끝낸 작업</dt><dd><strong>${data.doneToday ?? 0}</strong>건</dd>
+        ${info.friend ? `<dt>친한 동료</dt><dd>${esc(info.friend)}</dd>` : ""}
       </dl>
       <h4>최근 작업</h4>
       <ol>${(data.recent || []).map(r => `<li><span>${esc(phraseDetail(r.text))}</span><small>${ago(r.t)}</small></li>`).join("") || "<li><span>아직 기록이 없어요</span></li>"}</ol>

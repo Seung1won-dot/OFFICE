@@ -7,6 +7,7 @@ export const settings = {
   get alerts() { return pref("alerts", true); }, set alerts(v: boolean) { setPref("alerts", v); },
   get typing() { return pref("typing", false); }, set typing(v: boolean) { setPref("typing", v); },
   get log() { return pref("log", true); }, set log(v: boolean) { setPref("log", v); },
+  get nature() { return pref("nature", false); }, set nature(v: boolean) { setPref("nature", v); },
 };
 
 let ac: AudioContext | null = null;

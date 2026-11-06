@@ -2,6 +2,7 @@
 // 오른쪽 위 날씨 칩에 보여 주고, 바깥 풍경(비·눈·안개·흐림)·창문·햇살·밖에 있는 직원 우산에 반영된다.
 // 미리보기: 주소 뒤에 ?weather=rain  (clear·cloudy·fog·drizzle·rain·snow·storm, 끝에 숫자 1~3 을 붙이면 세기: rain3)
 import { esc, ago } from "./bubble";
+import { thunder } from "./nature";
 
 export type WeatherKind = "clear" | "cloudy" | "fog" | "drizzle" | "rain" | "snow" | "storm";
 export interface Weather {
@@ -61,4 +62,5 @@ export function lightning() {
   const el = document.getElementById("lightning");
   if (!el) return;
   el.classList.remove("on"); void el.offsetWidth; el.classList.add("on");
+  thunder();
 }

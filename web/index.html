@@ -67,7 +67,7 @@
     @keyframes bolt { 0% { opacity: 0; } 6% { opacity: .26; } 14% { opacity: .04; } 22% { opacity: .2; } 100% { opacity: 0; } }
     .tog { font: inherit; font-size: 11px; color: var(--muted); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; cursor: pointer; white-space: nowrap; }
     .tog.on { color: #2a1d1c; background: #d6a748; border-color: #d6a748; }
-    @media (max-width: 900px) { #btn-typing { display: none; } #hud { display: none; } }
+    @media (max-width: 900px) { #btn-typing, #btn-nature { display: none; } #hud { display: none; } }
     /* "확인 필요" 테두리 */
     #stage.waiting::after { content: ""; position: absolute; inset: 4px; border: 3px solid #ffd166; border-radius: 12px; pointer-events: none; animation: breathe 1.6s ease-in-out infinite; z-index: 5; }
     #stage.hit::before { content: ""; position: absolute; inset: 0; background: rgba(255,209,102,0.22); pointer-events: none; animation: hit 1.2s ease-out forwards; z-index: 6; }
@@ -136,6 +136,7 @@
         <button id="btn-guide" class="tog" title="부서 안내 열기/닫기 (H)">📋 부서 안내</button>
         <button id="btn-alerts" class="tog"></button>
         <button id="btn-typing" class="tog"></button>
+        <button id="btn-nature" class="tog" title="진짜 날씨에 맞춘 빗소리·새소리 (아주 작게)"></button>
       </div>
     </header>
     <main id="stage"><div id="game"></div><div id="lightning"></div>

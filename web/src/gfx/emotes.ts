@@ -62,6 +62,18 @@ export function ensureUmbrellas(scene: Phaser.Scene) {
   }));
 }
 
+/** 택배 상자 (GitHub push) · 하트 (친한 동료끼리 수다) */
+export function ensureExtras(scene: Phaser.Scene) {
+  make(scene, "parcel", 10, 8, px => {
+    px(0, 0, OUT, 10, 8); px(1, 1, "#d39a5c", 8, 6); px(1, 1, "#e4b07a", 8, 2);
+    px(4, 1, "#f2dfb4", 2, 6); px(6, 4, "#ffffff", 2, 2);   // 테이프 · 송장
+  });
+  make(scene, "emo-heart", 7, 6, px => {
+    px(1, 0, OUT, 2, 1); px(4, 0, OUT, 2, 1); px(0, 1, OUT, 7, 2); px(1, 3, OUT, 5, 1); px(2, 4, OUT, 3, 1); px(3, 5, OUT);
+    px(1, 1, "#ff7a9c", 2, 2); px(4, 1, "#ff7a9c", 2, 2); px(3, 2, "#ff7a9c"); px(2, 3, "#ff7a9c", 3, 1); px(3, 4, "#ff7a9c"); px(1, 1, "#ffd0dc");
+  });
+}
+
 export type Emote = "" | "alert" | "think" | "spark" | "zzz";
 
 /** 지금 보여줄 아이콘과 프레임 텍스처 */
