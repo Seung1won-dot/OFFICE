@@ -6,6 +6,7 @@ import Phaser from "phaser";
 import { OutdoorGeo, Season, OUT_MARGIN } from "./outdoor";
 import { G } from "../map/defaultMap";
 import { weatherNow, lightning, Weather } from "../ui/weather";
+import { drawSun } from "./ambience";
 
 type Px = (x: number, y: number, c: string, w?: number, h?: number) => void;
 function tex(scene: Phaser.Scene, key: string, w: number, h: number, draw: (px: Px) => void) {
@@ -153,7 +154,7 @@ export function addOutdoorLife(scene: Phaser.Scene, geo: OutdoorGeo, season: Sea
   const winG = wins.length ? scene.add.graphics().setDepth(1.5) : null;
   const winDrops = wins.map(() => [0, 1, 2].map(() => ({ dx: 1 + Math.floor(R() * 11), ph: R() * 11, v: 6 + R() * 10 })));
   let winT = 0, winKey = "";
-  let sunA = 1, t = 0;
+  let sunA = 1, sunT = 60, t = 0;
 
   const tick = (_: number, dms: number) => {
     const dt = Math.min(0.1, dms / 1000); t += dt;
@@ -288,8 +289,11 @@ export function addOutdoorLife(scene: Phaser.Scene, geo: OutdoorGeo, season: Sea
     // 뇌우: 가끔 번개
     if (w?.kind === "storm") { stormT -= dt; if (stormT <= 0) { stormT = 12 + R() * 25; lightning(); } }
 
-    // 창으로 드는 햇살
-    if (opts.sun) { sunA += (L.sun - sunA) * ease; opts.sun.setAlpha(sunA); }
+    // 창으로 드는 햇살: 날씨 따라 세기, 1분마다 시각 따라 색과 기울기
+    if (opts.sun) {
+      sunA += (L.sun - sunA) * ease; opts.sun.setAlpha(sunA);
+      sunT -= dt; if (sunT <= 0 && opts.map) { sunT = 60; drawSun(opts.sun, opts.map); }
+    }
 
     // 창문: 0.12초마다 다시 그림 (맑으면 원래 그림 그대로)
     winT -= dt;

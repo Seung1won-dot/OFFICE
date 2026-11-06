@@ -116,18 +116,35 @@ export function sign(scene: Phaser.Scene, x: number, y: number, label: string, a
 /** 창문으로 들어오는 햇빛: 창 아래 바닥에 비스듬한 밝은 사다리꼴 */
 export function addSunlight(scene: Phaser.Scene, map: Phaser.Tilemaps.Tilemap) {
   const g = scene.add.graphics().setDepth(DEPTH.rug + 0.1);   // 돌려준 그래픽의 투명도로 날씨(흐림·비)에 따라 햇살을 약하게
+  drawSun(g, map);
+  return g;
+}
+
+/** 시각(시, 소수)에 따른 햇살: 아침엔 연한 노랑이 왼쪽으로, 한낮엔 하얗게 거의 곧게, 늦은 오후엔 주황빛이 오른쪽으로 길게.
+ *  밤은 없음 (낮 사무실). 1분마다 다시 그려도 가볍다. ?hour=8 처럼 붙이면 그 시각으로 미리보기 */
+export function sunHour() {
+  try { const q = Number(new URLSearchParams(location.search).get("hour")); if (q >= 0 && q < 24 && new URLSearchParams(location.search).has("hour")) return q; } catch { /* */ }
+  const d = new Date(); return d.getHours() + d.getMinutes() / 60;
+}
+export function drawSun(g: Phaser.GameObjects.Graphics, map: Phaser.Tilemaps.Tilemap, hour = sunHour()) {
+  g.clear();
   const walls = map.getLayer("walls")?.data, floor = map.getLayer("floor")?.data;
-  if (!walls || !floor) return g;
+  if (!walls || !floor) return;
+  const k = Math.max(-1, Math.min(1, (hour - 12.5) / 5));   // -1 아침 … 0 한낮 … 1 늦은 오후
+  const mix = (a: number[], b: number[], t: number) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  const NOON = [255, 248, 226], MORNING = [255, 232, 176], EVENING = [255, 190, 120];
+  const [r, gg, b] = k < 0 ? mix(NOON, MORNING, -k) : mix(NOON, EVENING, k);
+  const col = (r << 16) | (gg << 8) | b, lean = 1 + k * 5, strong = 0.22 + 0.04 * Math.abs(k);   // 해가 낮을수록 길고 진하게
   walls.forEach((row, ty) => row.forEach((t, tx) => {
     if (t.index !== G.WINDOW) return;
-    let len = 0;   // 창 아래로 바닥이 이어지는 만큼 (최대 4칸)
-    while (len < 4 && floor[ty + 1 + len]?.[tx]?.index > 0 && !(walls[ty + 1 + len]?.[tx]?.index > 0)) len++;
+    let len = 0;   // 창 아래로 바닥이 이어지는 만큼 (최대 4칸, 해가 낮으면 5칸)
+    const max = Math.abs(k) > 0.6 ? 5 : 4;
+    while (len < max && floor[ty + 1 + len]?.[tx]?.index > 0 && !(walls[ty + 1 + len]?.[tx]?.index > 0)) len++;
     if (!len) return;
-    const x0 = tx * TILE + 2, y0 = (ty + 1) * TILE, y1 = y0 + len * TILE, skew = len * 4;
-    g.fillStyle(0xfff3cf, 0.22).fillPoints([{ x: x0, y: y0 }, { x: x0 + 12, y: y0 }, { x: x0 + 12 + skew, y: y1 }, { x: x0 + skew, y: y1 }], true);
-    g.fillStyle(0xffffff, 0.10).fillPoints([{ x: x0 + 2, y: y0 }, { x: x0 + 6, y: y0 }, { x: x0 + 6 + skew, y: y1 }, { x: x0 + 2 + skew, y: y1 }], true);
+    const x0 = tx * TILE + 2, y0 = (ty + 1) * TILE, y1 = y0 + len * TILE, skew = len * 4 * lean;
+    g.fillStyle(col, strong).fillPoints([{ x: x0, y: y0 }, { x: x0 + 12, y: y0 }, { x: x0 + 12 + skew, y: y1 }, { x: x0 + skew, y: y1 }], true);
+    g.fillStyle(0xffffff, 0.10 * (1 - 0.5 * Math.abs(k))).fillPoints([{ x: x0 + 2, y: y0 }, { x: x0 + 6, y: y0 }, { x: x0 + 6 + skew, y: y1 }, { x: x0 + 2 + skew, y: y1 }], true);
   }));
-  return g;
 }
 
 /** 마주 보는 책상 사이 낮은 파티션 (objects 레이어의 type=partition) */

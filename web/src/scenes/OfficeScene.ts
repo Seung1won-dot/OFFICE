@@ -174,6 +174,7 @@ class Walker {
   skinned = false;   // 개인용 스킨 그림 (그림자를 따로 깔아 줌)
   shadow?: Phaser.GameObjects.Ellipse; emote?: Phaser.GameObjects.Image; doneAt = 0; prevActivity = "";
   umbrella?: Phaser.GameObjects.Image;   // 비·눈 올 때 건물 밖에선 우산
+  waitSince = 0;   // 내 대답을 기다리기 시작한 시각
   mainNpc = false;   // 주인공(skins/main) 중 세션에 안 쓰인 아이 — 퇴근 없이 늘 사무실에 있음
   species: Species = "ember"; stage: Stage = 1; lookKey = "";
   // 생동감: 걷기 가감속, 대기 모션, 눈 깜빡임, 땀방울
@@ -293,6 +294,9 @@ class Walker {
       let oy = 0;
       if (!lie && !sit) oy = ((now + this.tx * 131) % 1800) < 900 ? 0 : -1;                 // 숨쉬기
       if (acting && this.idleAct === "stretch") oy = Math.floor(now / 200) % 2 ? -2 : 0;   // 기지개 폴짝
+      // 3분 넘게 내 대답을 기다리면 가끔 발을 동동 (오래 기다릴수록 자주)
+      const waited = this.session?.state === "waiting" ? Date.now() - this.waitSince : 0;
+      if (waited > 180000 && Math.floor(now / (waited > 600000 ? 1200 : 2400)) % 3 === 0) oy = Math.floor(now / 110) % 2 ? -2 : 0;
       this.sepX += (this.sepTarget - this.sepX) * 0.15;   // 스르륵 비켜 섬
       this.oy = oy; s.setPosition(Math.round(this.wx + this.sepX), Math.round(this.wy) + oy);
       // 멈춰 선 직후 한 번 눌렸다 펴짐, 그 뒤엔 아주 느린 숨쉬기
@@ -351,7 +355,8 @@ class Walker {
     if (!key) { this.emote?.setVisible(false); return; }
     if (!this.emote) this.emote = this.scene.add.image(0, 0, key).setOrigin(0.5, 1);
     const s = this.sprite, hop = e === "alert" ? -Math.abs(Math.round(Math.sin(now / 160) * 2)) : 0, ux = this.umbrella?.visible ? 15 : 11;   // 우산을 쓰면 옆으로 비켜서
-    this.emote.setTexture(key).setVisible(true).setPosition(s.x + ux, headY + 9 + hop).setDepth(DEPTH.icon - 0.5 + s.y / 1000);
+    const big = e === "alert" && Date.now() - this.waitSince > 300000 ? 1.4 : 1;   // 5분 넘게 기다리면 ❗가 커짐
+    this.emote.setTexture(key).setVisible(true).setScale(big).setPosition(s.x + ux, headY + 9 + hop).setDepth(DEPTH.icon - 0.5 + s.y / 1000);
   }
   /** 도구가 방금 에러를 냈으면 머리 옆에 땀방울이 주르륵 */
   sweat() {
@@ -578,8 +583,11 @@ export class OfficeScene extends Phaser.Scene {
     const m = now.getHours() * 60 + now.getMinutes();
     return this.cfg.standup.times.some(t => { const [h, mm] = t.split(":").map(Number); const s = h * 60 + mm; return m >= s && m < s + this.cfg.standup.durationMin; });
   }
+  /** 요금제 사용 한도에 걸려 있는 중 (다시 열리는 시각 전) */
+  limited() { const l = this.stats?.limit; return !!l && l.resetsAt > Date.now(); }
   zoneOf(s: Session) {
     const k = stateKey(s), z = this.cfg.zones;
+    if (this.limited() && k !== "waiting" && k !== "sleep") return "cafe";   // 한도 휴무: 다 같이 탕비실에서 쉼
     let zone = z[k] || "meet";
     if (s.state === "working") {
       const tool = (s.toolFull || s.tool || "").toLowerCase();
@@ -928,6 +936,7 @@ export class OfficeScene extends Phaser.Scene {
       w.session = s;
       // 상태 전환: 새로 "확인 필요" → 알림 / 작업 → 쉬는 중 = 완료 축하
       if (w.prevState && w.prevState !== "waiting" && s.state === "waiting") newWait = { w, s };
+      if (s.state === "waiting" && w.prevState !== "waiting") w.waitSince = w.prevState ? now : (s.updated || now);   // 처음 켰을 땐 마지막 기록 시각부터
       if (w.prevState === "working" && s.state === "idle" && s.activity === "done") this.celebrate(w);
       w.prevState = s.state;
       // 이름 + 직급 (같은 프로젝트는 같은 이름, 직급은 누적 도구 호출 수)
@@ -948,7 +957,10 @@ export class OfficeScene extends Phaser.Scene {
       // 정원 자리가 창 크기가 바뀌어 화면 밖이 됐으면 보이는 자리로 (없으면 수면실)
       if (w.zone === "out" && w.outside && !w.walking && w.target && !this.seen(this.garden.find(g => g.poi === w!.target)?.feet ?? { x: -1e4, y: -1e4 })) this.dispatch(w, "out", "walk");
       // 머리 위 아이콘: 대기 중이면 "!", 이동 보류 중이면 하려는 일의 아이콘
-      if (s.state === "waiting" || (w.zone === "ceo" && !w.walking)) w.setIcon("! 확인이 필요해요", "wait");
+      if (s.state === "waiting" || (w.zone === "ceo" && !w.walking)) {
+        const m = s.state === "waiting" ? Math.floor((now - w.waitSince) / 60000) : 0;
+        w.setIcon(m >= 1 ? `! 확인이 필요해요\n${m}분째 기다리는 중` : "! 확인이 필요해요", "wait");
+      }
       else if (s.state === "working") w.setIcon(twoLines(friendly(s)), "work");
       else if (w.zone === "out") w.setIcon("");   // 정원에선 말풍선 대신 작은 z
       else if (s.activity === "sleep" || w.zone === "nap") w.setIcon(w.walking ? "" : "Zzz…", "plain");
@@ -992,7 +1004,7 @@ export class OfficeScene extends Phaser.Scene {
     flash(waiting, !!newWait);
     if (newWait && settings.alerts) { chime(); notify("확인이 필요해요", `${newWait.w.name || "직원"} · ${newWait.s.title}`); }
     setTypingLevel(working);
-    this.renderBoard(); this.renderTokens(sessions); this.updatePlates();
+    this.renderBoard(); this.renderTokens(sessions); this.updatePlates(); this.renderLimitSign();
     const jr = [...this.walkers.values()].filter(j => j.junior && !j.leaving).length;
     this.renderGuide(sessions);
     this.renderMemberBoard();
@@ -1025,10 +1037,10 @@ export class OfficeScene extends Phaser.Scene {
       const se = w.npc ? null : w.session;
       let state: Member["state"] = "rest", text = "자리에서 대기";
       if (se) {
-        if (se.state === "waiting") { state = "wait"; text = "확인이 필요해요"; }
+        if (se.state === "waiting") { const m = Math.floor((Date.now() - w.waitSince) / 60000); state = "wait"; text = m >= 1 ? `${m}분째 기다림` : "확인이 필요해요"; }
         else if (se.state === "working") { state = "work"; text = friendly(se).split(":")[0]; }
         else if (se.activity === "done" && Date.now() - w.doneAt < 90000) { state = "done"; text = "방금 끝냈어요"; }
-        else { state = "rest"; text = restText(se, w.zone); }
+        else { state = "rest"; text = this.limited() ? "한도 휴무 중" : restText(se, w.zone); }
       }
       const name = (w as unknown as { skinName?: string }).skinName || w.name || "직원";
       const src = this.textures.exists(w.key) ? this.textures.get(w.key).getSourceImage() as CanvasImageSource : null;
@@ -1311,6 +1323,31 @@ export class OfficeScene extends Phaser.Scene {
     this.boardText.setText(`완료 ${st.doneToday}건
 토큰 ${fmt(st.tokensToday)}
 ${st.costToday ? `$${st.costToday.toFixed(2)}` : "비용 -"}`);
+  }
+
+  /** 한도 휴무 팻말: 리셉션 한가운데 "사용 한도 휴무 · 15:30 재오픈 · 1:23:45" (1초마다 줄어듦) */
+  limitSign?: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; glow: Phaser.GameObjects.Image };
+  renderLimitSign() {
+    if (!this.limited()) { if (this.limitSign) [this.limitSign.g, this.limitSign.t, this.limitSign.glow].forEach(o => o.setVisible(false)); return; }
+    const lobby = this.rooms.find(r => r.key === "lobby"), e = this.entrance;
+    const cx = lobby ? lobby.x + lobby.w / 2 : e.tx * TILE, cy = lobby ? lobby.y + lobby.h / 2 + 4 : e.ty * TILE - 20;
+    if (!this.limitSign) {
+      const g = this.add.graphics().setDepth(DEPTH.sign + 2);
+      const t = this.add.text(cx, cy, "", { fontFamily: MAP_FONT, fontSize: "7px", color: "#2a1d1c", align: "center", lineSpacing: 2 }).setOrigin(0.5).setResolution(4).setDepth(DEPTH.sign + 3);
+      const gl = glow(this, cx, cy, "#ffb070", 46, 0.35, 0.5);
+      this.limitSign = { g, t, glow: gl };
+    }
+    const lim = this.stats!.limit!, left = Math.max(0, lim.resetsAt - Date.now());
+    const at = new Date(lim.resetsAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const h = Math.floor(left / 3600000), m = Math.floor(left / 60000) % 60, sec = Math.floor(left / 1000) % 60, p = (n: number) => String(n).padStart(2, "0");
+    const { g, t, glow: gl } = this.limitSign;
+    t.setText(`☕ 사용 한도 휴무\n${at} 재오픈 · ${h ? `${h}:` : ""}${p(m)}:${p(sec)}`).setVisible(true);
+    const w = Math.ceil(t.width) + 14, hh = Math.ceil(t.height) + 8;
+    g.clear().setVisible(true);
+    g.fillStyle(0x000000, 0.22).fillRoundedRect(cx - w / 2 + 1, cy - hh / 2 + 2, w, hh, 4);
+    g.fillStyle(0xfff3e6, 1).fillRoundedRect(cx - w / 2, cy - hh / 2, w, hh, 4);
+    g.lineStyle(1.5, 0xe8875a, 1).strokeRoundedRect(cx - w / 2, cy - hh / 2, w, hh, 4);
+    gl.setVisible(true);
   }
 
   /** 오른쪽 위 토큰 위젯 */
